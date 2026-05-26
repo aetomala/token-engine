@@ -38,7 +38,7 @@ func NewReadyHandler(checkers []Checker) http.Handler {
 					FailedCheck: checker.Name(),
 					Reason:      err.Error(),
 				}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 				return
 			}
 		}

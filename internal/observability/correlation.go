@@ -76,9 +76,7 @@ func NewCorrelationInterceptor(logger Logger) grpc.UnaryServerInterceptor {
 		span.SetAttributes(attribute.String("correlation_id", corrID))
 
 		// ===== STEP 4: Set correlation ID in response metadata =====
-		if err := grpc.SetHeader(ctx, metadata.Pairs(MetadataKeyCorrelationID, corrID)); err != nil {
-			logger.Warn(ctx, "failed to set correlation ID response header", "error", err)
-		}
+		_ = grpc.SetHeader(ctx, metadata.Pairs(MetadataKeyCorrelationID, corrID))
 
 		// ===== STEP 5: Call handler =====
 		return handler(ctx, req)
