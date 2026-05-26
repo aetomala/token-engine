@@ -18,6 +18,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	grpchealth "google.golang.org/grpc/health"
@@ -69,7 +70,7 @@ func main() {
 		)
 		sdkTracer = tp.Tracer("token-engine")
 	} else {
-		noopTP := trace.NewNoopTracerProvider()
+		noopTP := tracenoop.NewTracerProvider()
 		sdkTracer = noopTP.Tracer("token-engine")
 	}
 
@@ -109,7 +110,7 @@ func main() {
 	// ===== gRPC Server =====
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
-			otelgrpc.UnaryServerInterceptor(),
+			otelgrpc.UnaryServerInterceptor(), //nolint:staticcheck // v0.52.0 pinned; NewServerHandler requires grpc.StatsHandler wiring removed in v0.60.0+
 			correlationInterceptor,
 			authInterceptor,
 			callerAuthInterceptor,

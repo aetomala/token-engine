@@ -1,5 +1,5 @@
 # Binaries
-token-engine
+/token-engine
 /dist/
 
 # Test coverage
