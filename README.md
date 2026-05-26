@@ -231,8 +231,11 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | Version | Status | Key Additions |
 |---|---|---|
 | v0.1 | ✅ Complete | gRPC service, interceptor chain, static auth, in-memory idempotency, NoOp audit + reconciliation |
-| v0.2 | Planned | Redis-backed idempotency store, audit logging, token reconciliation, dynamic tenant registry |
-| v1.0 | Planned | Stable API commitment, multi-region deployment docs, dynamic caller registry |
+| v0.2 | Planned | Single hardcoded tenant, Redis key + refresh stores, `IssueToken` + `RefreshToken` live |
+| v0.3 | Planned | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, Redis audit store |
+| v0.4 | Planned | Redis idempotency store, idempotency interceptor wired, `RefreshToken` retry safety end-to-end |
+| v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` |
+| v1.0 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, operator runbook |
 
 ---
 
