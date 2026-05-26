@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package token.v1;
+
+option go_package = "github.com/aetomala/token-engine/gen/v1;tokenv1";
+
+service TokenEngine {
+  rpc IssueToken(IssueTokenRequest)               returns (TokenPair);
+  rpc RefreshToken(RefreshTokenRequest)            returns (TokenPair);
+  rpc RevokeToken(RevokeTokenRequest)              returns (RevokeTokenResponse);
+  rpc RevokeAllForAudience(RevokeAudienceRequest)  returns (RevokeTokenResponse);
+  rpc RevokeAllUserTokens(RevokeUserRequest)        returns (RevokeTokenResponse);
+}
+
+message IssueTokenRequest {
+  string sub                  = 1;
+  string tenant_id            = 2;
+  string idempotency_key      = 3;
+  map<string, string> claims  = 4;
+  repeated string audiences   = 5;
+}
+
+message RefreshTokenRequest {
+  string refresh_token        = 1;
+  string tenant_id            = 2;
+  string idempotency_key      = 3;
+  map<string, string> claims  = 4;
+}
+
+message RevokeTokenRequest {
+  string refresh_token = 1;
+  string tenant_id     = 2;
+}
+
+message RevokeAudienceRequest {
+  string audience  = 1;
+  string tenant_id = 2;
+}
+
+message RevokeUserRequest {
+  string user_id   = 1;
+  string tenant_id = 2;
+}
+
+message TokenPair {
+  string access_token             = 1;
+  string refresh_token            = 2;
+  int64  access_token_expires_in  = 3;
+  int64  refresh_token_expires_in = 4;
+}
+
+message RevokeTokenResponse {}
