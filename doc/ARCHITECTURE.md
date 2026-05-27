@@ -193,9 +193,12 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 
 | Version | Target | Key Work |
 |---|---|---|
-| v0.1 | ✅ Complete | Full service skeleton, static auth, in-memory idempotency, NoOp stubs |
-| v0.2 | Planned | Redis client lifecycle, Redis-backed idempotency + audit + reconciliation, dynamic tenant registry |
-| v1.0 | Planned | Stable API commitment, dynamic caller registry, multi-region deployment guide |
+| v0.1 | ✅ Complete | Service skeleton, static auth, in-memory idempotency, NoOp stubs for all deferred concerns |
+| v0.2 | Planned | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
+| v0.3 | Planned | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, Redis audit store |
+| v0.4 | Planned | Redis idempotency store, idempotency interceptor wired, `RefreshToken` retry safety verified end-to-end |
+| v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` with drain/remove lifecycle |
+| v1.0 | Planned | Distributed locks for key rotation + reconciliation, cursor-based reconciler, Kubernetes manifests, operator runbook |
 
 ---
 
