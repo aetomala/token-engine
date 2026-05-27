@@ -25,3 +25,6 @@ Thumbs.db
 
 # golangci-lint cache
 .golangci-lint-cache/
+
+# Claude Code local context (personal — not for version control)
+CLAUDE.local.md
