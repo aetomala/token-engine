@@ -11,7 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [v0.1.0] — TBD
+## [v0.1.0] — 2026-05-27
 
 ### Added
 
