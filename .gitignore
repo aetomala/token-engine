@@ -1,0 +1,30 @@
+# Binaries
+/token-engine
+/dist/
+
+# Test coverage
+cover*.out
+coverage.html
+
+# Generated protocol buffer code
+# Committed intentionally — regenerate with: make proto-gen
+# /gen/
+
+# Go build cache (local)
+*.test
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# golangci-lint cache
+.golangci-lint-cache/
+
+# Claude Code local context (personal — not for version control)
+CLAUDE.local.md
