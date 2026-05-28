@@ -101,7 +101,7 @@ func main() {
 
 	// ===== Interceptors =====
 	// Order: otelgrpc → correlation → auth → caller authorization → idempotency → validation
-	correlationInterceptor := observability.NewCorrelationInterceptor(logger)
+	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
 	callerAuthInterceptor := interceptor.NewCallerAuthorizationInterceptor(callerReg, logger)
 	idempotencyInterceptor := interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics)
