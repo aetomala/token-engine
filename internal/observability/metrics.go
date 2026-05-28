@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	librarymetrics "github.com/aetomala/jwtauth/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -127,4 +128,43 @@ func (p *PrometheusMetrics) RecordDuration(name string, d time.Duration, labels 
 		panic(fmt.Sprintf("token-engine: unknown metric name %q", name))
 	}
 	histogram.Observe(d.Seconds())
+}
+
+// ===== LibraryPrometheusMetrics =====
+
+// LibraryPrometheusMetrics adapts the service's Metrics to satisfy the library's
+// metrics.Metrics interface. NOT injected into tokens.Manager in v0.2 — the Manager
+// receives the library's own librarymetrics.NewPrometheusMetrics so its 18
+// pre-registered metrics land on the shared registry. This type is defined here
+// as a future seam only.
+type LibraryPrometheusMetrics struct {
+	inner Metrics
+}
+
+var _ librarymetrics.Metrics = (*LibraryPrometheusMetrics)(nil)
+
+// NewLibraryPrometheusMetrics returns a LibraryPrometheusMetrics delegating all
+// calls to inner. inner must not be nil.
+func NewLibraryPrometheusMetrics(inner Metrics) *LibraryPrometheusMetrics {
+	return &LibraryPrometheusMetrics{inner: inner}
+}
+
+func (a *LibraryPrometheusMetrics) IncrementCounter(name string, labels map[string]string) {
+	a.inner.IncrementCounter(name, labels)
+}
+
+func (a *LibraryPrometheusMetrics) AddCounter(name string, value float64, labels map[string]string) {
+	a.inner.AddCounter(name, value, labels)
+}
+
+func (a *LibraryPrometheusMetrics) SetGauge(name string, value float64, labels map[string]string) {
+	a.inner.SetGauge(name, value, labels)
+}
+
+func (a *LibraryPrometheusMetrics) RecordHistogram(name string, value float64, labels map[string]string) {
+	a.inner.RecordHistogram(name, value, labels)
+}
+
+func (a *LibraryPrometheusMetrics) RecordDuration(name string, d time.Duration, labels map[string]string) {
+	a.inner.RecordDuration(name, d, labels)
 }

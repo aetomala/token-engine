@@ -79,8 +79,8 @@ func main() {
 
 	// ===== Observability (Metrics and Tracers) =====
 	metrics := observability.NewPrometheusMetrics(promReg)
-	_ = observability.NewOtelTracer(sdkTracer)         // service tracer; unused in v0.1
-	_ = observability.NewLibraryOtelTracer(sdkTracer)  // library tracer; unused in v0.1
+	tracer := observability.NewOtelTracer(sdkTracer)
+	_ = observability.NewLibraryOtelTracer(sdkTracer)  // library tracer; unused until v0.2 wiring
 
 	// ===== Authenticator =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
@@ -89,7 +89,7 @@ func main() {
 	idempStore := store.NewNoOpIdempotencyStore()
 
 	// ===== Registries =====
-	_ = registry.NewStaticTenantRegistry(nil, logger)  // tenant registry; unused in v0.1
+	// StaticTenantRegistry fully wired in PHASE-7 (requires Redis client).
 	callerReg := registry.NewStaticCallerRegistry(logger)
 
 	// ===== Audit and Reconciliation =====
@@ -101,7 +101,7 @@ func main() {
 
 	// ===== Interceptors =====
 	// Order: otelgrpc → correlation → auth → caller authorization → idempotency → validation
-	correlationInterceptor := observability.NewCorrelationInterceptor(logger)
+	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
 	callerAuthInterceptor := interceptor.NewCallerAuthorizationInterceptor(callerReg, logger)
 	idempotencyInterceptor := interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics)
@@ -124,7 +124,8 @@ func main() {
 	)
 
 	// ===== Register Handlers =====
-	tokenHandler := handler.NewTokenHandler()
+	// Tenant registry passed as nil stub — replaced in PHASE-7 with real StaticTenantRegistry.
+	tokenHandler := handler.NewTokenHandler(nil, logger, tracer, metrics)
 	tokenv1.RegisterTokenEngineServer(grpcServer, tokenHandler)
 
 	// ===== gRPC Health =====
