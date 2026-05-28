@@ -24,6 +24,8 @@ var _ = Describe("LiveHandler", func() {
 		sut = health.NewLiveHandler()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("GET /healthz/live", func() {
 		It("returns 200 OK", func() {
 			req := httptest.NewRequest("GET", "/healthz/live", nil)
@@ -43,6 +45,7 @@ var _ = Describe("LiveHandler", func() {
 			Expect(w.Body.String()).To(BeEmpty())
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("ReadyHandler", func() {
@@ -58,6 +61,8 @@ var _ = Describe("ReadyHandler", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("when all checkers pass", func() {
 		It("returns 200 OK", func() {
 			mockChecker := testutil.NewMockChecker(ctrl)
@@ -149,6 +154,7 @@ var _ = Describe("ReadyHandler", func() {
 			Expect(w.Code).To(Equal(http.StatusOK))
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("AuditChecker", func() {
@@ -168,6 +174,8 @@ var _ = Describe("AuditChecker", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("Name()", func() {
 		It("returns 'audit'", func() {
 			mockStore := testutil.NewMockStore(ctrl)
@@ -195,4 +203,5 @@ var _ = Describe("AuditChecker", func() {
 			Expect(err).NotTo(BeNil())
 		})
 	})
+	}) // Phase 3
 })
