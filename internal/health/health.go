@@ -7,12 +7,14 @@ import (
 	"net/http"
 
 	"github.com/aetomala/jwtauth/pkg/keys"
+	"github.com/aetomala/token-engine/internal/audit"
 	"github.com/redis/go-redis/v9"
 )
 
 const (
 	CheckerNameRedis           = "redis"
 	CheckerNameKeyAvailability = "key_availability"
+	CheckerNameAudit           = "audit"
 )
 
 // Checker is the extension interface for readiness checks.
@@ -108,4 +110,27 @@ func (c *KeyAvailabilityChecker) Check(ctx context.Context) error {
 		return errors.New("no signing keys available")
 	}
 	return nil
+}
+
+// AuditChecker is a health.Checker that verifies the audit store is reachable
+// by calling audit.Store.Ping. All methods are safe for concurrent use.
+type AuditChecker struct {
+	store audit.Store
+}
+
+// Compile-time assertion — place immediately after struct declaration.
+var _ Checker = (*AuditChecker)(nil)
+
+// NewAuditChecker constructs an AuditChecker. store must not be nil.
+func NewAuditChecker(store audit.Store) *AuditChecker {
+	return &AuditChecker{store: store}
+}
+
+// Name returns the stable identifier for this checker.
+func (c *AuditChecker) Name() string { return CheckerNameAudit }
+
+// Check calls audit.Store.Ping and returns any error.
+// Returns the context error if the context is cancelled.
+func (c *AuditChecker) Check(ctx context.Context) error {
+	return c.store.Ping(ctx)
 }

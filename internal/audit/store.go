@@ -16,11 +16,19 @@ type Store interface {
 	Ping(ctx context.Context) error
 }
 
+// Sentinel scope values for RevocationEvent.Scope.
+const (
+	RevocationScopeToken    = "token"
+	RevocationScopeAudience = "audience"
+	RevocationScopeUser     = "user"
+)
+
 // RevocationEvent captures a token revocation event for audit logging.
 type RevocationEvent struct {
 	TenantID       string
 	CallerIdentity string
-	TokenID        string
+	TokenID        string    // populated for Scope="token"; "" otherwise
+	Target         string    // populated for Scope="audience" (audience value) and Scope="user" (user ID); "" for Scope="token"
 	Scope          string    // "token", "audience", "user"
 	OccurredAt     time.Time
 }
