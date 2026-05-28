@@ -3,7 +3,16 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/aetomala/jwtauth/pkg/keys"
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	CheckerNameRedis           = "redis"
+	CheckerNameKeyAvailability = "key_availability"
 )
 
 // Checker is the extension interface for readiness checks.
@@ -50,4 +59,53 @@ type readyResponse struct {
 	Status      string `json:"status"`
 	FailedCheck string `json:"failed_check"`
 	Reason      string `json:"reason"`
+}
+
+// RedisChecker checks Redis reachability via PING.
+type RedisChecker struct {
+	client *redis.Client
+}
+
+var _ Checker = (*RedisChecker)(nil)
+
+// NewRedisChecker returns a new RedisChecker using the provided client.
+func NewRedisChecker(client *redis.Client) *RedisChecker {
+	return &RedisChecker{client: client}
+}
+
+// Name returns the stable identifier for this checker.
+func (c *RedisChecker) Name() string { return CheckerNameRedis }
+
+// Check pings Redis and returns an error if unreachable.
+func (c *RedisChecker) Check(ctx context.Context) error {
+	return c.client.Ping(ctx).Err()
+}
+
+// KeyAvailabilityChecker checks that at least one signing key is cached in the KeyManager.
+type KeyAvailabilityChecker struct {
+	km keys.KeyManager
+}
+
+var _ Checker = (*KeyAvailabilityChecker)(nil)
+
+// NewKeyAvailabilityChecker returns a new KeyAvailabilityChecker using the provided KeyManager.
+func NewKeyAvailabilityChecker(km keys.KeyManager) *KeyAvailabilityChecker {
+	return &KeyAvailabilityChecker{km: km}
+}
+
+// Name returns the stable identifier for this checker.
+func (c *KeyAvailabilityChecker) Name() string { return CheckerNameKeyAvailability }
+
+// Check returns an error if no signing keys are available in the KeyManager.
+func (c *KeyAvailabilityChecker) Check(ctx context.Context) error {
+	// ===== STEP 1: Get all key info =====
+	infos, err := c.km.GetAllKeyInfo(ctx)
+	if err != nil {
+		return err
+	}
+	// ===== STEP 2: Require at least one key =====
+	if len(infos) == 0 {
+		return errors.New("no signing keys available")
+	}
+	return nil
 }
