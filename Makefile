@@ -1,8 +1,11 @@
-.PHONY: build test coverage lint proto-gen ci clean
+.PHONY: build test coverage lint proto-gen ci docker-build cd clean
 
 BINARY   := token-engine
 PKG      := ./...
 TEST_PKG := ./internal/...
+IMAGE    := angeltomala/token-engine
+VERSION  := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
+DOCKER   := podman
 
 build:
 	go build -o $(BINARY) ./cmd/token-engine
@@ -22,6 +25,17 @@ proto-gen:
 	buf generate
 
 ci: lint build test
+
+docker-build:
+	$(DOCKER) build -t $(IMAGE):$(VERSION) .
+
+cd:
+	@test "$(VERSION)" != "dev" || (echo "error: not on a version tag — run: git checkout v<x.y.z>"; exit 1)
+	$(DOCKER) buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--tag $(IMAGE):$(VERSION) \
+		--push \
+		.
 
 clean:
 	go clean $(PKG)
