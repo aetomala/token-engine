@@ -27,6 +27,8 @@ var _ = Describe("StaticCallerRegistry", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("IsPermitted", func() {
 		It("returns true for all inputs in v0.1 stub", func() {
 			mockLogger := testutil.NewMockLogger(ctrl)
@@ -48,4 +50,5 @@ var _ = Describe("StaticCallerRegistry", func() {
 			Expect(permitted).To(BeTrue())
 		})
 	})
+	}) // Phase 3
 })

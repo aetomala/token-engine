@@ -42,6 +42,8 @@ var _ = Describe("Config", func() {
 		cleanupEnvVars()
 	})
 
+	// ===== PHASE 1: Constructor and Initialization =====
+	Describe("Phase 1: Constructor and Initialization", func() {
 	Context("TOKEN_ENGINE_ISSUER empty", func() {
 		It("calls os.Exit(1)", func() {
 			if os.Getenv("TEST_SUBPROCESS") == "issuer_empty" {
@@ -219,4 +221,5 @@ var _ = Describe("Config", func() {
 			cleanupEnvVars()
 		})
 	})
+	}) // Phase 1
 })

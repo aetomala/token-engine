@@ -46,9 +46,9 @@ func buildRealManager(ctrl *gomock.Controller, mockKM *testutil.MockKeyManager) 
 	return manager
 }
 
-// ===== Phase 3: IssueToken =====
-
-var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
+var _ = Describe("TokenHandler", func() {
+// ===== PHASE 3: IssueToken =====
+Describe("Phase 3: IssueToken", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -192,9 +192,8 @@ var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
 	})
 })
 
-// ===== Phase 3: RefreshToken =====
-
-var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
+// ===== PHASE 3: RefreshToken =====
+Describe("Phase 3: RefreshToken", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -326,9 +325,8 @@ var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
 	})
 })
 
-// ===== Phase 4: Observability =====
-
-var _ = Describe("Phase 4: TokenHandler — observability", func() {
+// ===== PHASE 4: Observability =====
+Describe("Phase 4: Observability", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -436,9 +434,8 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 	})
 })
 
-// ===== Phase 3: RevokeToken =====
-
-var _ = Describe("Phase 3: TokenHandler — RevokeToken", func() {
+// ===== PHASE 3: RevokeToken =====
+Describe("Phase 3: RevokeToken", func() {
 	var (
 		ctx            context.Context
 		cancel         context.CancelFunc
@@ -621,9 +618,8 @@ var _ = Describe("Phase 3: TokenHandler — RevokeToken", func() {
 	})
 })
 
-// ===== Phase 3: RevokeAllForAudience =====
-
-var _ = Describe("Phase 3: TokenHandler — RevokeAllForAudience", func() {
+// ===== PHASE 3: RevokeAllForAudience =====
+Describe("Phase 3: RevokeAllForAudience", func() {
 	var (
 		ctx            context.Context
 		cancel         context.CancelFunc
@@ -757,9 +753,8 @@ var _ = Describe("Phase 3: TokenHandler — RevokeAllForAudience", func() {
 	})
 })
 
-// ===== Phase 3: RevokeAllUserTokens =====
-
-var _ = Describe("Phase 3: TokenHandler — RevokeAllUserTokens", func() {
+// ===== PHASE 3: RevokeAllUserTokens =====
+Describe("Phase 3: RevokeAllUserTokens", func() {
 	var (
 		ctx            context.Context
 		cancel         context.CancelFunc
@@ -892,10 +887,11 @@ var _ = Describe("Phase 3: TokenHandler — RevokeAllUserTokens", func() {
 		})
 	})
 })
+}) // TokenHandler
 
-// ===== Phase 3: JWKSHandler =====
-
-var _ = Describe("Phase 3: JWKSHandler", func() {
+var _ = Describe("JWKSHandler", func() {
+// ===== PHASE 3: Core Operations =====
+Describe("Phase 3: Core Operations", func() {
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
@@ -1029,5 +1025,6 @@ var _ = Describe("Phase 3: JWKSHandler", func() {
 			Expect(w.Body.String()).NotTo(BeEmpty())
 		})
 	})
-})
+	}) // Phase 3: Core Operations
+}) // JWKSHandler
 
