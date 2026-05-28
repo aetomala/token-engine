@@ -2,12 +2,15 @@ package observability
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // ===== Context Key Types =====
@@ -53,8 +56,9 @@ func WithCallerIdentity(ctx context.Context, identity string) context.Context {
 
 // ===== Correlation Interceptor =====
 
-// NewCorrelationInterceptor creates a gRPC unary server interceptor that manages correlation IDs.
-func NewCorrelationInterceptor(logger Logger) grpc.UnaryServerInterceptor {
+// NewCorrelationInterceptor creates a gRPC unary server interceptor that manages correlation IDs
+// and emits per-RPC request count and duration metrics.
+func NewCorrelationInterceptor(logger Logger, metrics Metrics) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// ===== STEP 1: Extract or generate correlation ID =====
 		md, ok := metadata.FromIncomingContext(ctx)
@@ -78,7 +82,21 @@ func NewCorrelationInterceptor(logger Logger) grpc.UnaryServerInterceptor {
 		// ===== STEP 4: Set correlation ID in response metadata =====
 		_ = grpc.SetHeader(ctx, metadata.Pairs(MetadataKeyCorrelationID, corrID))
 
-		// ===== STEP 5: Call handler =====
-		return handler(ctx, req)
+		// ===== STEP 5: Call handler and emit metrics =====
+		start := time.Now()
+		resp, err := handler(ctx, req)
+
+		code := codes.OK
+		if err != nil {
+			code = status.Code(err)
+		}
+		metrics.IncrementCounter(MetricGRPCRequests, map[string]string{
+			"rpc_method": info.FullMethod,
+			"status":     code.String(),
+		})
+		metrics.RecordDuration(MetricGRPCDuration, time.Since(start), map[string]string{
+			"rpc_method": info.FullMethod,
+		})
+		return resp, err
 	}
 }

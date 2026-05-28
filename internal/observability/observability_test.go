@@ -748,7 +748,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", existingID)
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			// Create a test handler that captures the context
 			var capturedCtx context.Context
@@ -769,7 +769,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", existingID)
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			var capturedCtx context.Context
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -793,7 +793,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", existingID)
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 				// The span from context should have the correlation_id attribute set
@@ -811,7 +811,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", existingID)
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 				return nil, nil
@@ -830,7 +830,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs() // No correlation ID
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			var capturedCtx context.Context
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -851,7 +851,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs()
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 				return nil, nil
@@ -867,7 +867,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs()
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 				return nil, nil
@@ -885,7 +885,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", "test-id")
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			handlerCalled := false
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -902,7 +902,7 @@ var _ = Describe("CorrelationInterceptor", func() {
 			md := metadata.Pairs("x-correlation-id", corrID)
 			ctxWithMeta := metadata.NewIncomingContext(ctx, md)
 
-			interceptor := obs.NewCorrelationInterceptor(logger)
+			interceptor := obs.NewCorrelationInterceptor(logger, obs.NewNoOpMetrics())
 
 			var capturedCtx context.Context
 			handler := func(ctx context.Context, req interface{}) (interface{}, error) {
