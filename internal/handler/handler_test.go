@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
+	"github.com/aetomala/token-engine/internal/audit"
 	"github.com/aetomala/token-engine/internal/handler"
 	obs "github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/testutil"
@@ -64,7 +65,7 @@ var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
 		privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 
-		h = handler.NewTokenHandler(mockReg, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -210,7 +211,7 @@ var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
 		privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 
-		h = handler.NewTokenHandler(mockReg, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -340,7 +341,7 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 		mockReg = testutil.NewMockTenantRegistry(ctrl)
 		mockTracer = testutil.NewMockTracer(ctrl)
 		mockSpan = testutil.NewMockSpan(ctrl)
-		h = handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -394,7 +395,7 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 			mockKM := testutil.NewMockKeyManager(innerCtrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
 			// Need to issue a token first using a handler with NoOpTracer
-			hNoOp := handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			hNoOp := handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 			manager := buildRealManager(innerCtrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -431,49 +432,3 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 	})
 })
 
-// ===== Phase 3: Unimplemented RPCs =====
-
-var _ = Describe("Phase 3: TokenHandler — unimplemented RPCs", func() {
-	var (
-		ctx  context.Context
-		cancel context.CancelFunc
-		ctrl *gomock.Controller
-		h    *handler.TokenHandler
-	)
-
-	BeforeEach(func() {
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		ctrl = gomock.NewController(GinkgoT())
-		mockReg := testutil.NewMockTenantRegistry(ctrl)
-		h = handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
-	})
-
-	AfterEach(func() {
-		cancel()
-		ctrl.Finish()
-	})
-
-	Context("RevokeToken", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeToken(ctx, &tokenv1.RevokeTokenRequest{})
-			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
-		})
-	})
-
-	Context("RevokeAllForAudience", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeAllForAudience(ctx, &tokenv1.RevokeAudienceRequest{})
-			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
-		})
-	})
-
-	Context("RevokeAllUserTokens", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeAllUserTokens(ctx, &tokenv1.RevokeUserRequest{})
-			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
-		})
-	})
-})

@@ -42,10 +42,10 @@ func (m *MockTenantRegistry) EXPECT() *MockTenantRegistryMockRecorder {
 }
 
 // Get mocks base method.
-func (m *MockTenantRegistry) Get(ctx context.Context, tenantID string) (*tokens.Manager, error) {
+func (m *MockTenantRegistry) Get(ctx context.Context, tenantID string) (tokens.TokenManager, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, tenantID)
-	ret0, _ := ret[0].(*tokens.Manager)
+	ret0, _ := ret[0].(tokens.TokenManager)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

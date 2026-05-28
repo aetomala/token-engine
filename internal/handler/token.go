@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"time"
 
 	"github.com/aetomala/jwtauth/pkg/tokens"
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
+	"github.com/aetomala/token-engine/internal/audit"
 	"github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/registry"
 	"google.golang.org/grpc/codes"
@@ -17,27 +19,40 @@ import (
 // and abort if RecordRevocation returns an error.
 // This guard applies to: RevokeToken, RevokeAllForAudience, RevokeAllUserTokens.
 
+const (
+	spanNameRevokeToken          = "RevokeToken"
+	spanNameRevokeAllForAudience = "RevokeAllForAudience"
+	spanNameRevokeAllUserTokens  = "RevokeAllUserTokens"
+)
+
 // TokenHandler implements the TokenEngine gRPC service.
 type TokenHandler struct {
-	registry registry.TenantRegistry
-	logger   observability.Logger
-	tracer   observability.Tracer
-	metrics  observability.Metrics
+	registry   registry.TenantRegistry
+	auditStore audit.Store
+	logger     observability.Logger
+	tracer     observability.Tracer
+	metrics    observability.Metrics
 	tokenv1.UnimplementedTokenEngineServer
 }
 
 // NewTokenHandler returns a new TokenHandler wired with the given dependencies.
+// v0.3: auditStore parameter added — second positional argument.
+// v0.2: NewTokenHandler(registry, logger, tracer, metrics) — 4 args.
+// v0.3: NewTokenHandler(registry, auditStore, logger, tracer, metrics) — 5 args.
+// All parameters are required and must not be nil.
 func NewTokenHandler(
-	registry registry.TenantRegistry,
-	logger observability.Logger,
-	tracer observability.Tracer,
-	metrics observability.Metrics,
+	registry   registry.TenantRegistry,
+	auditStore audit.Store,
+	logger     observability.Logger,
+	tracer     observability.Tracer,
+	metrics    observability.Metrics,
 ) *TokenHandler {
 	return &TokenHandler{
-		registry: registry,
-		logger:   logger,
-		tracer:   tracer,
-		metrics:  metrics,
+		registry:   registry,
+		auditStore: auditStore,
+		logger:     logger,
+		tracer:     tracer,
+		metrics:    metrics,
 	}
 }
 
@@ -113,17 +128,176 @@ func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTok
 	return &tokenv1.TokenPair{AccessToken: access}, nil
 }
 
-// RevokeToken revokes a specific token. Unimplemented in v0.2.
+// RevokeToken revokes a specific refresh token by resolving its token ID and revoking it.
 func (h *TokenHandler) RevokeToken(ctx context.Context, req *tokenv1.RevokeTokenRequest) (*tokenv1.RevokeTokenResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+	// Revocation is gated on audit store availability. Issuance and refresh are not.
+	// This asymmetry is intentional — see architecture doc D2.
+	// A failed revocation audit leaves an undetectable gap with legal and security
+	// consequences. A failed issuance leaves no token in circulation.
+	// Do not add audit gating to IssueToken or RefreshToken handlers.
+
+	// ===== STEP 1: Open span =====
+	ctx, span := h.tracer.Start(ctx, spanNameRevokeToken)
+	defer span.End()
+
+	// ===== STEP 2: Audit gate =====
+	if err := h.auditStore.Ping(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Unavailable, "audit store unavailable")
+	}
+
+	// ===== STEP 3: Get tenant manager =====
+	manager, err := h.registry.Get(ctx, req.TenantId)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, err
+	}
+
+	// ===== STEP 4: Resolve token ID via IntrospectToken =====
+	tokenMetadata, err := manager.IntrospectToken(ctx, req.RefreshToken)
+	if err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 5: Revoke by token ID =====
+	if err := manager.RevokeRefreshToken(ctx, tokenMetadata.TokenID); err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 6: Record audit event =====
+	event := audit.RevocationEvent{
+		TenantID:       req.TenantId,
+		CallerIdentity: observability.CallerIdentityFromContext(ctx),
+		TokenID:        tokenMetadata.TokenID,
+		Target:         "",
+		Scope:          audit.RevocationScopeToken,
+		OccurredAt:     time.Now().UTC(),
+	}
+	if err := h.auditStore.RecordRevocation(ctx, event); err != nil {
+		h.logger.Error(ctx, "failed to record revocation audit", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "audit record failed")
+	}
+
+	span.SetStatus(observability.StatusOK, "")
+	return &tokenv1.RevokeTokenResponse{}, nil
 }
 
-// RevokeAllForAudience revokes all tokens for an audience. Unimplemented in v0.2.
+// RevokeAllForAudience revokes all tokens issued for the given audience.
 func (h *TokenHandler) RevokeAllForAudience(ctx context.Context, req *tokenv1.RevokeAudienceRequest) (*tokenv1.RevokeTokenResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+	// Revocation is gated on audit store availability. Issuance and refresh are not.
+	// This asymmetry is intentional — see architecture doc D2.
+	// A failed revocation audit leaves an undetectable gap with legal and security
+	// consequences. A failed issuance leaves no token in circulation.
+	// Do not add audit gating to IssueToken or RefreshToken handlers.
+
+	// ===== STEP 1: Open span =====
+	ctx, span := h.tracer.Start(ctx, spanNameRevokeAllForAudience)
+	defer span.End()
+
+	// ===== STEP 2: Audit gate =====
+	if err := h.auditStore.Ping(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Unavailable, "audit store unavailable")
+	}
+
+	// ===== STEP 3: Get tenant manager =====
+	manager, err := h.registry.Get(ctx, req.TenantId)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, err
+	}
+
+	// ===== STEP 4: Revoke all tokens for audience =====
+	if err := manager.RevokeAllForAudience(ctx, req.Audience); err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 5: Record audit event =====
+	event := audit.RevocationEvent{
+		TenantID:       req.TenantId,
+		CallerIdentity: observability.CallerIdentityFromContext(ctx),
+		TokenID:        "",
+		Target:         req.Audience,
+		Scope:          audit.RevocationScopeAudience,
+		OccurredAt:     time.Now().UTC(),
+	}
+	if err := h.auditStore.RecordRevocation(ctx, event); err != nil {
+		h.logger.Error(ctx, "failed to record revocation audit", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "audit record failed")
+	}
+
+	span.SetStatus(observability.StatusOK, "")
+	return &tokenv1.RevokeTokenResponse{}, nil
 }
 
-// RevokeAllUserTokens revokes all tokens for a user. Unimplemented in v0.2.
+// RevokeAllUserTokens revokes all tokens issued for the given user.
 func (h *TokenHandler) RevokeAllUserTokens(ctx context.Context, req *tokenv1.RevokeUserRequest) (*tokenv1.RevokeTokenResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+	// Revocation is gated on audit store availability. Issuance and refresh are not.
+	// This asymmetry is intentional — see architecture doc D2.
+	// A failed revocation audit leaves an undetectable gap with legal and security
+	// consequences. A failed issuance leaves no token in circulation.
+	// Do not add audit gating to IssueToken or RefreshToken handlers.
+
+	// ===== STEP 1: Open span =====
+	ctx, span := h.tracer.Start(ctx, spanNameRevokeAllUserTokens)
+	defer span.End()
+
+	// ===== STEP 2: Audit gate =====
+	if err := h.auditStore.Ping(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Unavailable, "audit store unavailable")
+	}
+
+	// ===== STEP 3: Get tenant manager =====
+	manager, err := h.registry.Get(ctx, req.TenantId)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, err
+	}
+
+	// ===== STEP 4: Revoke all tokens for user =====
+	if err := manager.RevokeAllUserTokens(ctx, req.UserId); err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 5: Record audit event =====
+	event := audit.RevocationEvent{
+		TenantID:       req.TenantId,
+		CallerIdentity: observability.CallerIdentityFromContext(ctx),
+		TokenID:        "",
+		Target:         req.UserId,
+		Scope:          audit.RevocationScopeUser,
+		OccurredAt:     time.Now().UTC(),
+	}
+	if err := h.auditStore.RecordRevocation(ctx, event); err != nil {
+		h.logger.Error(ctx, "failed to record revocation audit", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "audit record failed")
+	}
+
+	span.SetStatus(observability.StatusOK, "")
+	return &tokenv1.RevokeTokenResponse{}, nil
 }

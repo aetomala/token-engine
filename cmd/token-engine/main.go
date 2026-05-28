@@ -122,8 +122,7 @@ func main() {
 	callerReg := registry.NewStaticCallerRegistry(logger)
 
 	// ===== Audit and Reconciliation =====
-	auditStore := audit.NewNoOpAuditStore()
-	_ = auditStore
+	auditStore := audit.NewSlogAuditStore(logger)
 
 	reconciler := reconciliation.NewNoOpReconciler()
 	_ = reconciler
@@ -153,7 +152,7 @@ func main() {
 	)
 
 	// ===== Register Handlers =====
-	tokenHandler := handler.NewTokenHandler(tenantReg, logger, tracer, metrics)
+	tokenHandler := handler.NewTokenHandler(tenantReg, auditStore, logger, tracer, metrics)
 	tokenv1.RegisterTokenEngineServer(grpcServer, tokenHandler)
 
 	// ===== gRPC Health =====
@@ -169,13 +168,12 @@ func main() {
 	checkers := []internalhealth.Checker{
 		internalhealth.NewRedisChecker(redisClient),
 		internalhealth.NewKeyAvailabilityChecker(km),
+		internalhealth.NewAuditChecker(auditStore),
 	}
 	httpMux := http.NewServeMux()
 	httpMux.Handle("GET /healthz/live", internalhealth.NewLiveHandler())
 	httpMux.Handle("GET /healthz/ready", internalhealth.NewReadyHandler(checkers))
-	httpMux.HandleFunc("GET /.well-known/jwks.json", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-	})
+	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(km, cfg))
 	httpMux.Handle("GET /metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	// ===== HTTP Server =====

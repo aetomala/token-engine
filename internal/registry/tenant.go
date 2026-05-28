@@ -25,7 +25,7 @@ type TenantRegistry interface {
 	// Returns codes.InvalidArgument if tenantID is empty string "".
 	// Absent tenant_id (zero-value from proto unmarshalling) routes to the default tenant —
 	// the registry receives "" only when the caller explicitly sends "".
-	Get(ctx context.Context, tenantID string) (*tokens.Manager, error)
+	Get(ctx context.Context, tenantID string) (tokens.TokenManager, error)
 }
 
 // ===== Constants =====
@@ -125,7 +125,7 @@ func (r *StaticTenantRegistry) KeyManager() keys.KeyManager {
 // Get returns the tokens.Manager for the given tenantID.
 // Returns codes.InvalidArgument if tenantID is empty.
 // Returns codes.NotFound if tenantID does not match the configured issuer.
-func (r *StaticTenantRegistry) Get(ctx context.Context, tenantID string) (*tokens.Manager, error) {
+func (r *StaticTenantRegistry) Get(ctx context.Context, tenantID string) (tokens.TokenManager, error) {
 	// ===== STEP 1: Validate tenant ID =====
 	if tenantID == "" {
 		return nil, status.Error(codes.InvalidArgument, "tenant_id must not be empty")
