@@ -35,6 +35,7 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_REDIS_ADDR")
 		os.Unsetenv("TOKEN_ENGINE_REDIS_PASSWORD")
 		os.Unsetenv("TOKEN_ENGINE_REDIS_DB")
+		os.Unsetenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
 	}
 
 	AfterEach(func() {
@@ -134,6 +135,47 @@ var _ = Describe("Config", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.IdempotencyTTL).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE", "10m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(10 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE absent", func() {
+		It("uses default of 5m", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE set to unparseable value", func() {
+		It("logs warning and uses default of 5m", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE", "notaduration")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(5 * time.Minute))
 
 			cleanupEnvVars()
 		})
