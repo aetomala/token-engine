@@ -100,12 +100,14 @@ All gRPC requests produce a server span. The interceptor chain produces child sp
 
 ## Graceful Shutdown
 
-The service listens for `SIGINT` and `SIGTERM`. On receipt:
+The service listens for `SIGINT` and `SIGTERM`. On receipt, shutdown proceeds in this exact order:
 
-1. gRPC server: `GracefulStop()` — waits for in-flight RPCs to complete
-2. HTTP server: `Shutdown(ctx)` — stops accepting new connections, waits for active requests
+1. **gRPC drain** — `GracefulStop()` with a 10-second sub-deadline; hard stop if exceeded
+2. **OTel flush** — buffered spans are flushed to the OTLP collector before the process exits
+3. **Key manager stop** — background key-rotation goroutine is stopped
+4. **HTTP shutdown** — stops accepting new connections; health and metrics stay available through the gRPC drain
 
-Allow sufficient time in your pod termination grace period for in-flight requests to drain. Recommended minimum: `MaxConnectionAge + MaxConnectionAgeGrace` (default: 35 minutes total).
+Total budget: 30 seconds. Allow sufficient time in your pod termination grace period. Recommended minimum: `MaxConnectionAge + MaxConnectionAgeGrace` (default: 35 minutes total).
 
 ```yaml
 terminationGracePeriodSeconds: 60
@@ -126,11 +128,11 @@ Clients should implement retry with exponential backoff and respect `GOAWAY` fra
 
 ---
 
-## Redis (v0.2+)
+## Redis
 
-Redis is not used in v0.1. The configuration fields (`TOKEN_ENGINE_REDIS_ADDR`, `TOKEN_ENGINE_REDIS_PASSWORD`, `TOKEN_ENGINE_REDIS_DB`) are present and validated but the Redis client is not initialized in v0.1.
+Redis is required from v0.2+. It backs the tenant key and refresh-token stores (v0.2), the Redis idempotency store (v0.3), and is checked by the readiness probe. The service blocks at startup until Redis is reachable (retry window: 30 seconds).
 
-For v0.2 Redis hardening guidelines:
+Redis hardening guidelines:
 - Use Redis ACL to restrict commands to: `GET`, `SET`, `DEL`, `EXPIRE`, `KEYS`, `SCAN`
 - Isolate the Redis instance on a private network — no public exposure
 - Enable TLS on the Redis connection when using Redis 6+

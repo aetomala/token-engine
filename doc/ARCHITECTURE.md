@@ -24,7 +24,7 @@ cmd/token-engine/main.go
 │   ├── CallerRegistry  (internal/registry — StaticCallerRegistry)
 │   └── TenantRegistry  (internal/registry — StaticTenantRegistry)
 ├── Stores
-│   └── IdempotencyStore (internal/store — in-memory, v0.1)
+│   └── IdempotencyStore (internal/store — RedisIdempotencyStore, v0.3)
 ├── Audit             (internal/audit — SlogAuditStore, v0.3)
 ├── Reconciliation    (internal/reconciliation — NoOpReconciler, v0.1)
 ├── Handlers
@@ -153,7 +153,7 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 | Audit logging | `audit.AuditStore` | `SlogAuditStore` (structured log sink) | Live — v0.3 |
 | Token reconciliation | `reconciliation.TokenReconciler` | `NoOpReconciler` | Deferred — v0.5+ |
 | Dynamic tenant registry | `registry.TenantRegistry` | `StaticTenantRegistry` (static config, real `tokens.TokenManager`) | Static — Redis backend deferred to v0.5 |
-| Idempotency store | `store.IdempotencyStore` | In-memory map with TTL | Deferred — v0.4 (Redis) |
+| Idempotency store | `store.IdempotencyStore` | `RedisIdempotencyStore` (24h TTL default) | Live — v0.3 |
 | Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` | Deferred — v1.0 |
 
 ---
@@ -202,7 +202,7 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | v0.1 | ✅ Complete | Service skeleton, static auth, in-memory idempotency, NoOp stubs for all deferred concerns |
 | v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
 | v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, `SlogAuditStore`, jwtauth v0.7.1 (`tokens.TokenManager` interface) |
-| v0.4 | Planned | Redis idempotency store, idempotency interceptor wired, `RefreshToken` retry safety verified end-to-end |
+| v0.4 | Planned | `RefreshToken` retry safety verified end-to-end, idempotency correctness hardening |
 | v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` with drain/remove lifecycle |
 | v1.0 | Planned | Distributed locks for key rotation + reconciliation, cursor-based reconciler, Kubernetes manifests, operator runbook |
 
