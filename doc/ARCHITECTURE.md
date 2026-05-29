@@ -22,12 +22,14 @@ cmd/token-engine/main.go
 ├── Authenticator     (internal/interceptor — StaticKeyAuthenticator)
 ├── Registries
 │   ├── CallerRegistry  (internal/registry — StaticCallerRegistry)
-│   └── TenantRegistry  (internal/registry — StaticTenantRegistry, NoOp in v0.1)
+│   └── TenantRegistry  (internal/registry — StaticTenantRegistry)
 ├── Stores
 │   └── IdempotencyStore (internal/store — in-memory, v0.1)
-├── Audit             (internal/audit — NoOpAuditStore, v0.1)
+├── Audit             (internal/audit — SlogAuditStore, v0.3)
 ├── Reconciliation    (internal/reconciliation — NoOpReconciler, v0.1)
-├── Handler           (internal/handler — TokenHandler, delegates to jwtauth)
+├── Handlers
+│   ├── TokenHandler  (internal/handler — delegates to jwtauth tokens.TokenManager)
+│   └── JWKSHandler   (internal/handler — delegates to jwtauth keys.KeyManager, v0.3)
 ├── Health            (internal/health — LiveHandler, ReadyHandler)
 ├── gRPC Server       (interceptor chain + TokenEngine service)
 └── HTTP Server       (/healthz/live, /healthz/ready, /metrics)
@@ -54,7 +56,7 @@ Client Request
 ├─────────────────────────┤
 │ 5. Idempotency          │  deduplicates requests by idempotency key within TTL
 ├─────────────────────────┤
-│ 6. Validation           │  validates request fields (stub in v0.1)
+│ 6. Validation           │  validates required request fields
 └─────────────────────────┘
     │
     ▼
@@ -86,13 +88,13 @@ CallerAuthz interceptor — checks caller identity against tenant's allowed call
 Idempotency interceptor — checks in-memory store for duplicate idempotency key
   │  ← returns cached response if duplicate within TTL
   ▼
-Validation interceptor  — validates required fields (stub; pass-through in v0.1)
+Validation interceptor  — validates required fields
   │
   ▼
-TokenHandler            — delegates to jwtauth (KeyManager, TokenManager, RefreshStore)
+TokenHandler / JWKSHandler  — delegates to jwtauth (tokens.TokenManager / keys.KeyManager)
   │  ← maps jwtauth errors to gRPC status codes via MapLibraryError
   ▼
-Client ← TokenPair / RevokeTokenResponse
+Client ← TokenPair / RevokeTokenResponse / JWKSResponse
 ```
 
 ---
@@ -111,23 +113,25 @@ Every component receives three observability fields injected at construction tim
 
 **Correlation ID:** The correlation interceptor stores a UUID in the request context using `CorrelationIDKey{}`. The `SlogLogger` reads this key on every log call and includes it as `correlation_id`. All log entries for a single request share the same correlation ID regardless of which component emits them.
 
+**Caller Identity:** The auth interceptor stores the authenticated caller's identity in the request context using `CallerIdentityKey{}` (defined in `internal/observability/correlation.go`). Downstream interceptors and handlers read it via `observability.CallerIdentityFromContext(ctx)`.
+
 ---
 
 ## jwtauth Integration
 
-token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v0.7.0.
+token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v0.7.1.
 
-The `TokenHandler` uses three jwtauth components:
+The `TokenHandler` depends on the `tokens.TokenManager` interface (introduced in jwtauth v0.7.1), not the concrete `*tokens.Manager` type. This enables service-layer unit testing without a running key store or storage backend — `StaticTenantRegistry.Get` returns the interface, and tests inject `mock_tokens_manager.go` generated against it.
 
-| Component | Purpose |
-|---|---|
-| `keys.KeyManager` | Key lifecycle — rotation, loading, JWKS |
-| `tokens.TokenManager` | Token issuance, refresh, revocation, validation |
-| `storage.RefreshStore` | Persistent refresh token storage |
+| Component | Interface / Type | Purpose |
+|---|---|---|
+| `tokens.TokenManager` | Interface (v0.7.1) | Token issuance, refresh, revocation, validation |
+| `keys.KeyManager` | `*keys.Manager` | Key lifecycle — rotation, loading, JWKS |
+| `storage.RefreshStore` | Interface | Persistent refresh token storage |
 
 token-engine does not implement any JWT signing, key management, or token storage logic. It provides the transport, multi-tenancy, and observability layers that jwtauth does not include by design.
 
-**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v0.7.0 source:
+**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v0.7.1 source:
 
 | Sentinel | Package | gRPC Code |
 |---|---|---|
@@ -140,17 +144,17 @@ token-engine does not implement any JWT signing, key management, or token storag
 
 ---
 
-## v0.1 Deferrals
+## Interface Seams and Implementation Status
 
-The following components are present as interface seams with NoOp implementations in v0.1. They produce correct behavior (no panics, no errors) with zero side effects.
+Components with interface seams produce correct behavior (no panics, no errors) when their backing implementation is a NoOp. Each seam can be promoted independently without API changes.
 
-| Component | Interface | v0.1 Implementation | Target Version |
+| Component | Interface | Current Implementation | Status |
 |---|---|---|---|
-| Audit logging | `audit.AuditStore` | `NoOpAuditStore` | v0.2 (Redis) |
-| Token reconciliation | `reconciliation.TokenReconciler` | `NoOpReconciler` | v0.2 |
-| Dynamic tenant registry | `registry.TenantRegistry` | `StaticTenantRegistry` (static config) | v0.2 (Redis) |
-| Idempotency store | `store.IdempotencyStore` | In-memory map with TTL | v0.2 (Redis) |
-| Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` | v1.0 |
+| Audit logging | `audit.AuditStore` | `SlogAuditStore` (structured log sink) | Live — v0.3 |
+| Token reconciliation | `reconciliation.TokenReconciler` | `NoOpReconciler` | Deferred — v0.5+ |
+| Dynamic tenant registry | `registry.TenantRegistry` | `StaticTenantRegistry` (static config, real `tokens.TokenManager`) | Static — Redis backend deferred to v0.5 |
+| Idempotency store | `store.IdempotencyStore` | In-memory map with TTL | Deferred — v0.4 (Redis) |
+| Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` | Deferred — v1.0 |
 
 ---
 
@@ -160,13 +164,13 @@ The following components are present as interface seams with NoOp implementation
 |---|---|---|
 | `cmd/token-engine` | `github.com/aetomala/token-engine/cmd/token-engine` | Binary entry point, wiring |
 | `internal/config` | `.../internal/config` | Environment-based configuration loading |
-| `internal/observability` | `.../internal/observability` | Logger, Metrics, Tracer interfaces and implementations |
+| `internal/observability` | `.../internal/observability` | Logger, Metrics, Tracer interfaces and implementations; CallerIdentity context helpers |
 | `internal/interceptor` | `.../internal/interceptor` | gRPC interceptor chain (auth, correlation, OTel, idempotency, validation) |
 | `internal/registry` | `.../internal/registry` | Caller and tenant identity registries |
 | `internal/handler` | `.../internal/handler` | gRPC service implementation delegating to jwtauth |
 | `internal/health` | `.../internal/health` | HTTP liveness and readiness handlers |
 | `internal/store` | `.../internal/store` | Idempotency store |
-| `internal/audit` | `.../internal/audit` | Audit logging interface and NoOp |
+| `internal/audit` | `.../internal/audit` | Audit logging interface, NoOp, and SlogAuditStore |
 | `internal/reconciliation` | `.../internal/reconciliation` | Token reconciliation interface and NoOp |
 | `internal/testutil` | `.../internal/testutil` | Generated mocks for all interfaces |
 | `gen/v1` | `github.com/aetomala/token-engine/gen/v1` | Generated protobuf and gRPC stubs |
@@ -177,13 +181,15 @@ The following components are present as interface seams with NoOp implementation
 
 Tests use Ginkgo v2 (BDD) with Gomega matchers. All suites run with the race detector.
 
-Each package has a suite bootstrap file (`*_suite_test.go`) and a test file organized into numbered phases:
+Each package has a suite bootstrap file (`*_suite_test.go`) and test files organized into numbered phases:
 
 1. Constructor and initialization
 2. Default configuration
 3. Core operations
 4. Error cases
 5. Concurrency (where applicable)
+
+The canonical structure is one outer `Describe("ComponentName", ...)` per component with phase-numbered `Describe("Phase N: ...", ...)` blocks nested inside. This gives each phase a defined filing location — future tests inject into the correct section rather than accumulating at the file bottom.
 
 Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks live in `internal/testutil/`. Tests use black-box testing (`package xxx_test`) to validate the public API surface.
 
@@ -194,8 +200,8 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | Version | Target | Key Work |
 |---|---|---|
 | v0.1 | ✅ Complete | Service skeleton, static auth, in-memory idempotency, NoOp stubs for all deferred concerns |
-| v0.2 | Planned | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
-| v0.3 | Planned | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, Redis audit store |
+| v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
+| v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, `SlogAuditStore`, jwtauth v0.7.1 (`tokens.TokenManager` interface) |
 | v0.4 | Planned | Redis idempotency store, idempotency interceptor wired, `RefreshToken` retry safety verified end-to-end |
 | v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` with drain/remove lifecycle |
 | v1.0 | Planned | Distributed locks for key rotation + reconciliation, cursor-based reconciler, Kubernetes manifests, operator runbook |
