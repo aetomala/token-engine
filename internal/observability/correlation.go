@@ -24,8 +24,9 @@ type CallerIdentityKey struct{}
 // ===== Metadata Key Constants =====
 
 const (
-	MetadataKeyCorrelationID = "x-correlation-id"
-	MetadataKeyAPIKey        = "x-api-key"
+	MetadataKeyCorrelationID  = "x-correlation-id"
+	MetadataKeyAPIKey         = "x-api-key"
+	MetadataKeyIdempotencyKey = "x-idempotency-key"
 )
 
 // ===== Correlation ID Accessors =====
