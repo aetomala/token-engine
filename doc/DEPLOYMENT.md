@@ -130,7 +130,7 @@ Clients should implement retry with exponential backoff and respect `GOAWAY` fra
 
 ## Redis
 
-Redis is required from v0.2+. It backs the tenant key and refresh-token stores (v0.2), the Redis idempotency store (v0.3), and is checked by the readiness probe. The service blocks at startup until Redis is reachable (retry window: 30 seconds).
+Redis is required from v0.2+. It backs the tenant key and refresh-token stores (v0.2), the Redis idempotency store (v0.4), and is checked by the readiness probe. The service blocks at startup until Redis is reachable (retry window: 30 seconds).
 
 Redis hardening guidelines:
 - Use Redis ACL to restrict commands to: `GET`, `SET`, `DEL`, `EXPIRE`, `KEYS`, `SCAN`

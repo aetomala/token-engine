@@ -229,7 +229,7 @@ make ci
 Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
 
 ```bash
-docker pull docker.io/angeltomala/token-engine:v0.3.0
+docker pull docker.io/angeltomala/token-engine:v0.4.0
 ```
 
 See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
@@ -250,8 +250,8 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 |---|---|---|
 | v0.1 | ✅ Complete | gRPC service, interceptor chain, static auth, in-memory idempotency, NoOp audit + reconciliation |
 | v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `IssueToken` + `RefreshToken` live |
-| v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, `SlogAuditStore`, Redis idempotency store, CD pipeline |
-| v0.4 | Planned | `RefreshToken` retry safety end-to-end, idempotency correctness hardening |
+| v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, `SlogAuditStore`, CD pipeline |
+| v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
 | v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` |
 | v1.0 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, operator runbook |
 
