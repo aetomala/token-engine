@@ -11,6 +11,28 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [v0.4.0] — 2026-05-29
+
+### Added
+
+- `RedisIdempotencyStore` — Redis-backed idempotency store replacing the v0.1 in-memory implementation; persists deduplication records across replicas with configurable TTL (default 24h via `TOKEN_ENGINE_IDEMPOTENCY_TTL`); resolves v0.3.0 deferral
+- `IdempotencyInterceptor` promoted to full implementation — previously a NoOp stub; now performs live lookups against `RedisIdempotencyStore` and caches responses for the duration of the TTL
+- End-to-end gRPC integration test suite — validates the full interceptor chain against a real Redis instance; covers `IssueToken`, `RefreshToken`, and all revocation RPCs including idempotency deduplication behavior
+
+### Fixed
+
+- Shutdown hardening — OTel flush step added so buffered spans reach the collector before exit; gRPC `GracefulStop` bounded by a 10-second sub-deadline with hard stop if exceeded; HTTP server shutdown timeout added; listener bound synchronously before goroutine spawn to eliminate a bind/serve race
+- Three production bugs identified and fixed during integration test development
+
+### Version Deferrals (v0.5+)
+
+- Token reconciliation — `NoOpReconciler` remains; cursor-based implementation deferred to v1.0
+- mTLS authenticator — static API key authentication remains; mTLS deferred to v0.5
+- Dynamic tenant registry — `StaticTenantRegistry` remains; full Redis-backed multi-tenant registry deferred to v0.5
+- Caller registry — `StaticCallerRegistry` remains; dynamic YAML-backed registry deferred to v1.0
+
+---
+
 ## [v0.3.0] — 2026-05-28
 
 ### Added
