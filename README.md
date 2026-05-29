@@ -1,6 +1,7 @@
 # token-engine
 
 [![CI](https://github.com/aetomala/token-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/aetomala/token-engine/actions/workflows/ci.yml)
+[![CD](https://github.com/aetomala/token-engine/actions/workflows/cd.yml/badge.svg)](https://github.com/aetomala/token-engine/actions/workflows/cd.yml)
 [![Go 1.26+](https://img.shields.io/badge/go-1.26+-blue.svg)](https://go.dev/dl/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
