@@ -11,6 +11,35 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [v0.3.0] — 2026-05-28
+
+### Added
+
+- `SlogAuditStore` — live audit-store implementation; writes structured log lines via the observability logger for all revocation events (token ID, target, scope, caller identity, timestamp)
+- `AuditChecker` — extends `/healthz/ready` readiness probe with audit store connectivity verification; revocation RPCs return `codes.Unavailable` if the audit store is unreachable
+- Revocation RPCs fully implemented — previously NoOp stubs in v0.2:
+  - `RevokeToken` — revokes individual refresh token; introspects token to resolve token ID; records audit event with `scope="token"`
+  - `RevokeAllForAudience` — revokes all tokens for a given audience; records audit event with `scope="audience"`
+  - `RevokeAllUserTokens` — revokes all tokens for a given user; records audit event with `scope="user"`
+- `JWKSHandler` — fully functional HTTP handler at `/.well-known/jwks.json`; returns 503 on key manager unavailability or empty key set; sets `Cache-Control: public, max-age=N` on success
+- `JWKSCacheMaxAge` config field — controls JWKS `Cache-Control` max-age; env var `TOKEN_ENGINE_JWKS_CACHE_MAX_AGE`; defaults to 5 minutes
+- CD pipeline — Docker image published to `docker.io/angeltomala/token-engine:<tag>` automatically on `v*` tag push; active starting with this release
+- Comprehensive v0.3 test suite: `SlogAuditStore` (100%), `AuditChecker` (100%), config including `JWKSCacheMaxAge` (90.3%), revocation handlers + `JWKSHandler` (92.6%)
+
+### Fixed
+
+- Go runtime bumped 1.26.2 → 1.26.3 — resolves three stdlib security advisories (`GO-2026-4982`, `GO-2026-4980`, `GO-2026-4971`)
+
+### Version Deferrals (v0.4+)
+
+- Redis-backed idempotency store — in-memory TTL-based store remains; cross-replica consistency deferred to v0.4
+- Token reconciliation — `NoOpReconciler` remains; cursor-based implementation deferred to v1.0
+- mTLS authenticator — static API key authentication remains; mTLS deferred to v0.5
+- Dynamic tenant registry — `StaticTenantRegistry` remains; full Redis-backed multi-tenant registry deferred to v0.5
+- Caller registry — `StaticCallerRegistry` remains; dynamic YAML-backed registry deferred to v1.0
+
+---
+
 ## [v0.2.0] — 2026-05-27
 
 ### Added

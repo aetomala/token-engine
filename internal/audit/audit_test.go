@@ -18,31 +18,34 @@ var _ = Describe("NoOpAuditStore", func() {
 		ctx = context.Background()
 	})
 
-	Context("RecordRevocation", func() {
-		It("returns nil for any event", func() {
-			sut := audit.NewNoOpAuditStore()
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
+		Context("RecordRevocation", func() {
+			It("returns nil for any event", func() {
+				sut := audit.NewNoOpAuditStore()
 
-			event := audit.RevocationEvent{
-				TenantID:       "tenant-1",
-				CallerIdentity: "caller-1",
-				TokenID:        "token-1",
-				Scope:          "token",
-				OccurredAt:     time.Now(),
-			}
+				event := audit.RevocationEvent{
+					TenantID:       "tenant-1",
+					CallerIdentity: "caller-1",
+					TokenID:        "token-1",
+					Scope:          "token",
+					OccurredAt:     time.Now(),
+				}
 
-			err := sut.RecordRevocation(ctx, event)
+				err := sut.RecordRevocation(ctx, event)
 
-			Expect(err).To(BeNil())
+				Expect(err).To(BeNil())
+			})
 		})
-	})
 
-	Context("Ping", func() {
-		It("returns nil", func() {
-			sut := audit.NewNoOpAuditStore()
+		Context("Ping", func() {
+			It("returns nil", func() {
+				sut := audit.NewNoOpAuditStore()
 
-			err := sut.Ping(ctx)
+				err := sut.Ping(ctx)
 
-			Expect(err).To(BeNil())
+				Expect(err).To(BeNil())
+			})
 		})
 	})
 })

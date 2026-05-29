@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"time"
 
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
+	"github.com/aetomala/token-engine/internal/audit"
+	"github.com/aetomala/token-engine/internal/config"
 	"github.com/aetomala/token-engine/internal/handler"
 	obs "github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/testutil"
@@ -41,9 +46,9 @@ func buildRealManager(ctrl *gomock.Controller, mockKM *testutil.MockKeyManager) 
 	return manager
 }
 
-// ===== Phase 3: IssueToken =====
-
-var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
+var _ = Describe("TokenHandler", func() {
+// ===== PHASE 3: IssueToken =====
+Describe("Phase 3: IssueToken", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -64,7 +69,7 @@ var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
 		privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 
-		h = handler.NewTokenHandler(mockReg, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -187,9 +192,8 @@ var _ = Describe("Phase 3: TokenHandler — IssueToken", func() {
 	})
 })
 
-// ===== Phase 3: RefreshToken =====
-
-var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
+// ===== PHASE 3: RefreshToken =====
+Describe("Phase 3: RefreshToken", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -210,7 +214,7 @@ var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
 		privateKey, err = rsa.GenerateKey(rand.Reader, 2048)
 		Expect(err).NotTo(HaveOccurred())
 
-		h = handler.NewTokenHandler(mockReg, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -321,9 +325,8 @@ var _ = Describe("Phase 3: TokenHandler — RefreshToken", func() {
 	})
 })
 
-// ===== Phase 4: Observability =====
-
-var _ = Describe("Phase 4: TokenHandler — observability", func() {
+// ===== PHASE 4: Observability =====
+Describe("Phase 4: Observability", func() {
 	var (
 		ctx        context.Context
 		cancel     context.CancelFunc
@@ -340,7 +343,7 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 		mockReg = testutil.NewMockTenantRegistry(ctrl)
 		mockTracer = testutil.NewMockTracer(ctrl)
 		mockSpan = testutil.NewMockSpan(ctrl)
-		h = handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+		h = handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
 	})
 
 	AfterEach(func() {
@@ -394,7 +397,7 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 			mockKM := testutil.NewMockKeyManager(innerCtrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
 			// Need to issue a token first using a handler with NoOpTracer
-			hNoOp := handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			hNoOp := handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 			manager := buildRealManager(innerCtrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -431,21 +434,27 @@ var _ = Describe("Phase 4: TokenHandler — observability", func() {
 	})
 })
 
-// ===== Phase 3: Unimplemented RPCs =====
-
-var _ = Describe("Phase 3: TokenHandler — unimplemented RPCs", func() {
+// ===== PHASE 3: RevokeToken =====
+Describe("Phase 3: RevokeToken", func() {
 	var (
-		ctx  context.Context
-		cancel context.CancelFunc
-		ctrl *gomock.Controller
-		h    *handler.TokenHandler
+		ctx            context.Context
+		cancel         context.CancelFunc
+		ctrl           *gomock.Controller
+		mockReg        *testutil.MockTenantRegistry
+		mockAuditStore *testutil.MockStore
+		mockTM         *testutil.MockTokenManager
+		h              *handler.TokenHandler
+		req            *tokenv1.RevokeTokenRequest
 	)
 
 	BeforeEach(func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		ctrl = gomock.NewController(GinkgoT())
-		mockReg := testutil.NewMockTenantRegistry(ctrl)
-		h = handler.NewTokenHandler(mockReg, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		mockReg = testutil.NewMockTenantRegistry(ctrl)
+		mockAuditStore = testutil.NewMockStore(ctrl)
+		mockTM = testutil.NewMockTokenManager(ctrl)
+		h = handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		req = &tokenv1.RevokeTokenRequest{TenantId: "tenant-1", RefreshToken: "raw-token"}
 	})
 
 	AfterEach(func() {
@@ -453,27 +462,569 @@ var _ = Describe("Phase 3: TokenHandler — unimplemented RPCs", func() {
 		ctrl.Finish()
 	})
 
-	Context("RevokeToken", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeToken(ctx, &tokenv1.RevokeTokenRequest{})
-			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
+	Context("when audit store Ping fails", func() {
+		It("returns codes.Unavailable without calling the Manager", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			resp, err := h.RevokeToken(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeToken(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
 		})
 	})
 
-	Context("RevokeAllForAudience", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeAllForAudience(ctx, &tokenv1.RevokeAudienceRequest{})
+	Context("when IntrospectToken fails", func() {
+		It("maps the error via MapLibraryError", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(nil, errors.New("introspect failed"))
+			resp, err := h.RevokeToken(ctx, req)
+			Expect(resp).To(BeNil())
 			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
+		})
+
+		It("does not call RevokeRefreshToken", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(nil, errors.New("introspect failed"))
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeToken(ctx, req)
+			Expect(err).NotTo(BeNil())
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(nil, errors.New("introspect failed"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeToken(ctx, req)
+			Expect(err).NotTo(BeNil())
 		})
 	})
 
-	Context("RevokeAllUserTokens", func() {
-		It("returns codes.Unimplemented", func() {
-			_, err := h.RevokeAllUserTokens(ctx, &tokenv1.RevokeUserRequest{})
+	Context("when RevokeRefreshToken succeeds", func() {
+		It("calls RecordRevocation with Scope=token and TokenID from IntrospectToken", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
+				e, ok := v.(audit.RevocationEvent)
+				return ok && e.Scope == audit.RevocationScopeToken && e.TokenID == "tok-123"
+			})).Return(nil)
+			resp, err := h.RevokeToken(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).NotTo(BeNil())
+		})
+
+		It("returns empty RevokeTokenResponse and nil error", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			resp, err := h.RevokeToken(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).To(Equal(&tokenv1.RevokeTokenResponse{}))
+		})
+	})
+
+	Context("when RevokeRefreshToken fails", func() {
+		It("maps the error via MapLibraryError", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(storage.ErrTokenNotFound)
+			resp, err := h.RevokeToken(ctx, req)
+			Expect(resp).To(BeNil())
 			Expect(err).NotTo(BeNil())
-			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(storage.ErrTokenNotFound)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeToken(ctx, req)
+			Expect(err).NotTo(BeNil())
+		})
+	})
+
+	Context("when RecordRevocation fails after successful revocation", func() {
+		It("returns codes.Internal", func() {
+			mockLogger := testutil.NewMockLogger(ctrl)
+			hWithLogger := handler.NewTokenHandler(mockReg, mockAuditStore, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(errors.New("db write failed"))
+			mockLogger.EXPECT().Error(gomock.Any(), "failed to record revocation audit", "error", gomock.Any())
+			resp, err := hWithLogger.RevokeToken(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Internal))
+			Expect(resp).To(BeNil())
+		})
+
+		It("logs ERROR", func() {
+			mockLogger := testutil.NewMockLogger(ctrl)
+			hWithLogger := handler.NewTokenHandler(mockReg, mockAuditStore, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(errors.New("db write failed"))
+			mockLogger.EXPECT().Error(gomock.Any(), "failed to record revocation audit", "error", gomock.Any())
+			_, _ = hWithLogger.RevokeToken(ctx, req)
+			// gomock verifies mockLogger.Error was called via ctrl.Finish() in AfterEach
+			Expect(true).To(BeTrue())
+		})
+	})
+
+	Context("observability", func() {
+		It("opens and ends a span named 'RevokeToken'", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeToken").Return(ctx, mockSpan)
+			mockSpan.EXPECT().SetStatus(obs.StatusOK, "")
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			_, err := hObs.RevokeToken(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("records error on span when handler returns non-nil error", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeToken").Return(ctx, mockSpan)
+			mockSpan.EXPECT().RecordError(gomock.Any())
+			mockSpan.EXPECT().SetStatus(obs.StatusError, gomock.Any())
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("unavailable"))
+			_, err := hObs.RevokeToken(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
 		})
 	})
 })
+
+// ===== PHASE 3: RevokeAllForAudience =====
+Describe("Phase 3: RevokeAllForAudience", func() {
+	var (
+		ctx            context.Context
+		cancel         context.CancelFunc
+		ctrl           *gomock.Controller
+		mockReg        *testutil.MockTenantRegistry
+		mockAuditStore *testutil.MockStore
+		mockTM         *testutil.MockTokenManager
+		h              *handler.TokenHandler
+		req            *tokenv1.RevokeAudienceRequest
+	)
+
+	BeforeEach(func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		ctrl = gomock.NewController(GinkgoT())
+		mockReg = testutil.NewMockTenantRegistry(ctrl)
+		mockAuditStore = testutil.NewMockStore(ctrl)
+		mockTM = testutil.NewMockTokenManager(ctrl)
+		h = handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		req = &tokenv1.RevokeAudienceRequest{TenantId: "tenant-1", Audience: "api"}
+	})
+
+	AfterEach(func() {
+		cancel()
+		ctrl.Finish()
+	})
+
+	Context("when audit store Ping fails", func() {
+		It("returns codes.Unavailable without calling the Manager", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			resp, err := h.RevokeAllForAudience(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeAllForAudience(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+	})
+
+	Context("when RevokeAllForAudience succeeds", func() {
+		It("calls RecordRevocation with Scope=audience and Target=req.Audience", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
+				e, ok := v.(audit.RevocationEvent)
+				return ok && e.Scope == audit.RevocationScopeAudience && e.Target == req.Audience
+			})).Return(nil)
+			resp, err := h.RevokeAllForAudience(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).NotTo(BeNil())
+		})
+
+		It("returns empty RevokeTokenResponse and nil error", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			resp, err := h.RevokeAllForAudience(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).To(Equal(&tokenv1.RevokeTokenResponse{}))
+		})
+	})
+
+	Context("when RevokeAllForAudience fails", func() {
+		It("maps the error via MapLibraryError", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(errors.New("revoke failed"))
+			resp, err := h.RevokeAllForAudience(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(err).NotTo(BeNil())
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(errors.New("revoke failed"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeAllForAudience(ctx, req)
+			Expect(err).NotTo(BeNil())
+		})
+	})
+
+	Context("when RecordRevocation fails after successful revocation", func() {
+		It("returns codes.Internal", func() {
+			mockLogger := testutil.NewMockLogger(ctrl)
+			hWithLogger := handler.NewTokenHandler(mockReg, mockAuditStore, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(errors.New("db write failed"))
+			mockLogger.EXPECT().Error(gomock.Any(), "failed to record revocation audit", "error", gomock.Any())
+			resp, err := hWithLogger.RevokeAllForAudience(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Internal))
+			Expect(resp).To(BeNil())
+		})
+	})
+
+	Context("observability", func() {
+		It("opens and ends a span named 'RevokeAllForAudience'", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeAllForAudience").Return(ctx, mockSpan)
+			mockSpan.EXPECT().SetStatus(obs.StatusOK, "")
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForAudience(gomock.Any(), req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			_, err := hObs.RevokeAllForAudience(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("records error on span when handler returns non-nil error", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeAllForAudience").Return(ctx, mockSpan)
+			mockSpan.EXPECT().RecordError(gomock.Any())
+			mockSpan.EXPECT().SetStatus(obs.StatusError, gomock.Any())
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("unavailable"))
+			_, err := hObs.RevokeAllForAudience(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+	})
+})
+
+// ===== PHASE 3: RevokeAllUserTokens =====
+Describe("Phase 3: RevokeAllUserTokens", func() {
+	var (
+		ctx            context.Context
+		cancel         context.CancelFunc
+		ctrl           *gomock.Controller
+		mockReg        *testutil.MockTenantRegistry
+		mockAuditStore *testutil.MockStore
+		mockTM         *testutil.MockTokenManager
+		h              *handler.TokenHandler
+		req            *tokenv1.RevokeUserRequest
+	)
+
+	BeforeEach(func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		ctrl = gomock.NewController(GinkgoT())
+		mockReg = testutil.NewMockTenantRegistry(ctrl)
+		mockAuditStore = testutil.NewMockStore(ctrl)
+		mockTM = testutil.NewMockTokenManager(ctrl)
+		h = handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		req = &tokenv1.RevokeUserRequest{TenantId: "tenant-1", UserId: "user-1"}
+	})
+
+	AfterEach(func() {
+		cancel()
+		ctrl.Finish()
+	})
+
+	Context("when audit store Ping fails", func() {
+		It("returns codes.Unavailable without calling the Manager", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			resp, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+	})
+
+	Context("when RevokeAllUserTokens succeeds", func() {
+		It("calls RecordRevocation with Scope=user and Target=req.UserId", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
+				e, ok := v.(audit.RevocationEvent)
+				return ok && e.Scope == audit.RevocationScopeUser && e.Target == req.UserId
+			})).Return(nil)
+			resp, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).NotTo(BeNil())
+		})
+
+		It("returns empty RevokeTokenResponse and nil error", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			resp, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).To(Equal(&tokenv1.RevokeTokenResponse{}))
+		})
+	})
+
+	Context("when RevokeAllUserTokens fails", func() {
+		It("maps the error via MapLibraryError", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(errors.New("revoke failed"))
+			resp, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(err).NotTo(BeNil())
+		})
+
+		It("does not call RecordRevocation", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(errors.New("revoke failed"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+			_, err := h.RevokeAllUserTokens(ctx, req)
+			Expect(err).NotTo(BeNil())
+		})
+	})
+
+	Context("when RecordRevocation fails after successful revocation", func() {
+		It("returns codes.Internal", func() {
+			mockLogger := testutil.NewMockLogger(ctrl)
+			hWithLogger := handler.NewTokenHandler(mockReg, mockAuditStore, mockLogger, obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(errors.New("db write failed"))
+			mockLogger.EXPECT().Error(gomock.Any(), "failed to record revocation audit", "error", gomock.Any())
+			resp, err := hWithLogger.RevokeAllUserTokens(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Internal))
+			Expect(resp).To(BeNil())
+		})
+	})
+
+	Context("observability", func() {
+		It("opens and ends a span named 'RevokeAllUserTokens'", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeAllUserTokens").Return(ctx, mockSpan)
+			mockSpan.EXPECT().SetStatus(obs.StatusOK, "")
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllUserTokens(gomock.Any(), req.UserId).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+			_, err := hObs.RevokeAllUserTokens(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("records error on span when handler returns non-nil error", func() {
+			mockTracer := testutil.NewMockTracer(ctrl)
+			mockSpan := testutil.NewMockSpan(ctrl)
+			hObs := handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), mockTracer, obs.NewNoOpMetrics())
+			mockTracer.EXPECT().Start(gomock.Any(), "RevokeAllUserTokens").Return(ctx, mockSpan)
+			mockSpan.EXPECT().RecordError(gomock.Any())
+			mockSpan.EXPECT().SetStatus(obs.StatusError, gomock.Any())
+			mockSpan.EXPECT().End()
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("unavailable"))
+			_, err := hObs.RevokeAllUserTokens(ctx, req)
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+	})
+})
+}) // TokenHandler
+
+var _ = Describe("JWKSHandler", func() {
+// ===== PHASE 3: Core Operations =====
+Describe("Phase 3: Core Operations", func() {
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+		ctrl   *gomock.Controller
+		mockKM *testutil.MockKeyManager
+		testCfg *config.Config
+	)
+
+	BeforeEach(func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		ctrl = gomock.NewController(GinkgoT())
+		mockKM = testutil.NewMockKeyManager(ctrl)
+		testCfg = &config.Config{JWKSCacheMaxAge: 5 * time.Minute}
+	})
+
+	AfterEach(func() {
+		cancel()
+		ctrl.Finish()
+	})
+
+	Context("when km.GetJWKS returns an error", func() {
+		It("returns 503", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Code).To(Equal(http.StatusServiceUnavailable))
+		})
+
+		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Content-Type")).To(Equal("application/json"))
+		})
+
+		It(`writes body {"error":"key manager unavailable"}`, func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Body.String()).To(ContainSubstring("key manager unavailable"))
+		})
+
+		It("does not write Cache-Control header", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Cache-Control")).To(BeEmpty())
+		})
+	})
+
+	Context("when GetJWKS succeeds but key set is empty", func() {
+		It("returns 503", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Code).To(Equal(http.StatusServiceUnavailable))
+		})
+
+		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Content-Type")).To(Equal("application/json"))
+		})
+
+		It(`writes body {"error":"no signing keys available"}`, func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Body.String()).To(ContainSubstring("no signing keys available"))
+		})
+
+		It("does not write Cache-Control header", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Cache-Control")).To(BeEmpty())
+		})
+	})
+
+	Context("when GetJWKS succeeds with at least one key", func() {
+		It("returns 200", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Content-Type")).To(Equal("application/json"))
+		})
+
+		It("writes Cache-Control: public, max-age=N derived from cfg.JWKSCacheMaxAge", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Header().Get("Cache-Control")).To(Equal("public, max-age=300"))
+		})
+
+		It("writes JSON-encoded JWKS body", func() {
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Body.String()).NotTo(BeEmpty())
+		})
+	})
+	}) // Phase 3: Core Operations
+}) // JWKSHandler
+

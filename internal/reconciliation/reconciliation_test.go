@@ -23,24 +23,27 @@ var _ = Describe("NoOpReconciler", func() {
 		cancel()
 	})
 
-	Context("Run", func() {
-		It("returns nil immediately", func() {
-			sut := reconciliation.NewNoOpReconciler()
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
+		Context("Run", func() {
+			It("returns nil immediately", func() {
+				sut := reconciliation.NewNoOpReconciler()
 
-			err := sut.Run(ctx)
+				err := sut.Run(ctx)
 
-			Expect(err).To(BeNil())
-		})
+				Expect(err).To(BeNil())
+			})
 
-		It("returns nil when context is already cancelled", func() {
-			sut := reconciliation.NewNoOpReconciler()
+			It("returns nil when context is already cancelled", func() {
+				sut := reconciliation.NewNoOpReconciler()
 
-			cancelledCtx, cancelFunc := context.WithCancel(ctx)
-			cancelFunc()
+				cancelledCtx, cancelFunc := context.WithCancel(ctx)
+				cancelFunc()
 
-			err := sut.Run(cancelledCtx)
+				err := sut.Run(cancelledCtx)
 
-			Expect(err).To(BeNil())
+				Expect(err).To(BeNil())
+			})
 		})
 	})
 })

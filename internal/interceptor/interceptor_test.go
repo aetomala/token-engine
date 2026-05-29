@@ -41,6 +41,8 @@ var _ = Describe("AuthInterceptor", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("when Authenticator.Authenticate succeeds", func() {
 		It("binds caller identity to ctx via WithCallerIdentity", func() {
 			expectedIdentity := "test-caller-123"
@@ -102,6 +104,7 @@ var _ = Describe("AuthInterceptor", func() {
 			Expect(err).To(Equal(authErr))
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("StaticKeyAuthenticator", func() {
@@ -124,6 +127,8 @@ var _ = Describe("StaticKeyAuthenticator", func() {
 		cancel()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("when x-api-key header is present and matches a configured key", func() {
 		It("returns the mapped caller identity", func() {
 			md := metadata.Pairs(observability.MetadataKeyAPIKey, "key1")
@@ -172,6 +177,7 @@ var _ = Describe("StaticKeyAuthenticator", func() {
 			Expect(st.Code()).To(Equal(codes.Unauthenticated))
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("IdempotencyInterceptor (v0.1 stub)", func() {
@@ -199,6 +205,8 @@ var _ = Describe("IdempotencyInterceptor (v0.1 stub)", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("always", func() {
 		It("calls the handler and returns its result unchanged", func() {
 			expectedResp := map[string]string{"response": "data"}
@@ -214,6 +222,7 @@ var _ = Describe("IdempotencyInterceptor (v0.1 stub)", func() {
 			Expect(err).To(Equal(expectedErr))
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("ValidationInterceptor (v0.1 stub)", func() {
@@ -237,6 +246,8 @@ var _ = Describe("ValidationInterceptor (v0.1 stub)", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("always", func() {
 		It("calls the handler and returns its result unchanged", func() {
 			expectedResp := map[string]string{"result": "ok"}
@@ -252,6 +263,7 @@ var _ = Describe("ValidationInterceptor (v0.1 stub)", func() {
 			Expect(err).To(Equal(expectedErr))
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("CallerAuthorizationInterceptor (v0.1 stub)", func() {
@@ -277,6 +289,8 @@ var _ = Describe("CallerAuthorizationInterceptor (v0.1 stub)", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("always", func() {
 		It("calls the handler and returns its result unchanged", func() {
 			expectedResp := "authorized"
@@ -292,4 +306,5 @@ var _ = Describe("CallerAuthorizationInterceptor (v0.1 stub)", func() {
 			Expect(err).To(Equal(expectedErr))
 		})
 	})
+	}) // Phase 3
 })

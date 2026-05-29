@@ -1,10 +1,12 @@
 package health_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	"github.com/aetomala/token-engine/internal/health"
 	"github.com/aetomala/token-engine/internal/testutil"
@@ -22,6 +24,8 @@ var _ = Describe("LiveHandler", func() {
 		sut = health.NewLiveHandler()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("GET /healthz/live", func() {
 		It("returns 200 OK", func() {
 			req := httptest.NewRequest("GET", "/healthz/live", nil)
@@ -41,6 +45,7 @@ var _ = Describe("LiveHandler", func() {
 			Expect(w.Body.String()).To(BeEmpty())
 		})
 	})
+	}) // Phase 3
 })
 
 var _ = Describe("ReadyHandler", func() {
@@ -56,6 +61,8 @@ var _ = Describe("ReadyHandler", func() {
 		ctrl.Finish()
 	})
 
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
 	Context("when all checkers pass", func() {
 		It("returns 200 OK", func() {
 			mockChecker := testutil.NewMockChecker(ctrl)
@@ -147,4 +154,54 @@ var _ = Describe("ReadyHandler", func() {
 			Expect(w.Code).To(Equal(http.StatusOK))
 		})
 	})
+	}) // Phase 3
+})
+
+var _ = Describe("AuditChecker", func() {
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+		ctrl   *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		ctrl = gomock.NewController(GinkgoT())
+	})
+
+	AfterEach(func() {
+		cancel()
+		ctrl.Finish()
+	})
+
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
+	Context("Name()", func() {
+		It("returns 'audit'", func() {
+			mockStore := testutil.NewMockStore(ctrl)
+			checker := health.NewAuditChecker(mockStore)
+			Expect(checker.Name()).To(Equal(health.CheckerNameAudit))
+		})
+	})
+
+	Context("when audit.Store.Ping returns nil", func() {
+		It("returns nil", func() {
+			mockStore := testutil.NewMockStore(ctrl)
+			mockStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			checker := health.NewAuditChecker(mockStore)
+			err := checker.Check(ctx)
+			Expect(err).To(BeNil())
+		})
+	})
+
+	Context("when audit.Store.Ping returns an error", func() {
+		It("returns a non-nil error", func() {
+			mockStore := testutil.NewMockStore(ctrl)
+			mockStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store down"))
+			checker := health.NewAuditChecker(mockStore)
+			err := checker.Check(ctx)
+			Expect(err).NotTo(BeNil())
+		})
+	})
+	}) // Phase 3
 })

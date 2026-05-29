@@ -78,6 +78,11 @@ type Config struct {
 	// env: TOKEN_ENGINE_REDIS_DB; default: 0
 	// parse failure — log warning, use default
 	RedisDB int
+
+	// JWKSCacheMaxAge is the Cache-Control max-age for the JWKS endpoint response.
+	// env: TOKEN_ENGINE_JWKS_CACHE_MAX_AGE; default: 5 * time.Minute
+	// parse failure — log warning, use default
+	JWKSCacheMaxAge time.Duration
 }
 
 // Load reads environment variables and validates them into a *Config.
@@ -101,6 +106,7 @@ func Load() (*Config, error) {
 	redisAddrEnv := os.Getenv("TOKEN_ENGINE_REDIS_ADDR")
 	redisPasswordEnv := os.Getenv("TOKEN_ENGINE_REDIS_PASSWORD")
 	redisDBEnv := os.Getenv("TOKEN_ENGINE_REDIS_DB")
+	jwksCacheMaxAgeEnv := os.Getenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
 
 	// ===== STEP 2: Fatal validations (before any defaults) =====
 
@@ -207,6 +213,19 @@ func Load() (*Config, error) {
 			c.MaxConnectionAgeGrace = defaultMaxConnectionAgeGrace
 		} else {
 			c.MaxConnectionAgeGrace = duration
+		}
+	}
+
+	defaultJWKSCacheMaxAge := 5 * time.Minute
+	if jwksCacheMaxAgeEnv == "" {
+		c.JWKSCacheMaxAge = defaultJWKSCacheMaxAge
+	} else {
+		duration, err := time.ParseDuration(jwksCacheMaxAgeEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE parse error: %v; using default %v", err, defaultJWKSCacheMaxAge)
+			c.JWKSCacheMaxAge = defaultJWKSCacheMaxAge
+		} else {
+			c.JWKSCacheMaxAge = duration
 		}
 	}
 

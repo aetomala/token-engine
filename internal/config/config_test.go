@@ -35,12 +35,15 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_REDIS_ADDR")
 		os.Unsetenv("TOKEN_ENGINE_REDIS_PASSWORD")
 		os.Unsetenv("TOKEN_ENGINE_REDIS_DB")
+		os.Unsetenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
 	}
 
 	AfterEach(func() {
 		cleanupEnvVars()
 	})
 
+	// ===== PHASE 1: Constructor and Initialization =====
+	Describe("Phase 1: Constructor and Initialization", func() {
 	Context("TOKEN_ENGINE_ISSUER empty", func() {
 		It("calls os.Exit(1)", func() {
 			if os.Getenv("TEST_SUBPROCESS") == "issuer_empty" {
@@ -139,6 +142,47 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE", "10m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(10 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE absent", func() {
+		It("uses default of 5m", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE set to unparseable value", func() {
+		It("logs warning and uses default of 5m", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE", "notaduration")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.JWKSCacheMaxAge).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
 	Context("all required fields set", func() {
 		It("returns a fully populated Config without error", func() {
 			setRequiredEnvVars()
@@ -177,4 +221,5 @@ var _ = Describe("Config", func() {
 			cleanupEnvVars()
 		})
 	})
+	}) // Phase 1
 })
