@@ -129,14 +129,42 @@ var _ = Describe("Config", func() {
 	})
 
 	Context("TOKEN_ENGINE_IDEMPOTENCY_TTL parse failure", func() {
-		It("logs warning and uses default 5m", func() {
+		It("logs warning and uses default 24h", func() {
 			setRequiredEnvVars()
 			os.Setenv("TOKEN_ENGINE_IDEMPOTENCY_TTL", "not-a-duration")
 
 			cfg, err := config.Load()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.IdempotencyTTL).To(Equal(5 * time.Minute))
+			Expect(cfg.IdempotencyTTL).To(Equal(24 * time.Hour))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_IDEMPOTENCY_TTL set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_IDEMPOTENCY_TTL", "30m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.IdempotencyTTL).To(Equal(30 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_IDEMPOTENCY_TTL absent", func() {
+		It("uses default of 24h without logging a warning", func() {
+			setRequiredEnvVars()
+			// TOKEN_ENGINE_IDEMPOTENCY_TTL not set — cleanupEnvVars already unsets it
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.IdempotencyTTL).To(Equal(24 * time.Hour))
 
 			cleanupEnvVars()
 		})

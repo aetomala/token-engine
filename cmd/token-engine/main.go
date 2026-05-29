@@ -118,7 +118,7 @@ func main() {
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
 
 	// ===== Stores =====
-	idempStore := store.NewNoOpIdempotencyStore()
+	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
 	// ===== Registries =====
 	callerReg := registry.NewStaticCallerRegistry(logger)
