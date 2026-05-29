@@ -48,8 +48,8 @@ type StaticTenantRegistry struct {
 }
 
 // NewStaticTenantRegistry constructs and starts a StaticTenantRegistry. It builds a
-// RedisKeyStore, KeyManager, RedisRefreshStore, and tokens.Manager in order, starting
-// the KeyManager before constructing downstream components. Returns an error if any
+// RedisKeyStore, KeyManager, RedisRefreshStore, and tokens.Manager in order, then starts
+// the tokens.Manager — which in turn starts the KeyManager. Returns an error if any
 // construction or startup step fails.
 func NewStaticTenantRegistry(
 	ctx context.Context,
@@ -80,12 +80,7 @@ func NewStaticTenantRegistry(
 		return nil, fmt.Errorf("creating key manager for tenant %s: %w", cfg.Issuer, err)
 	}
 
-	// ===== STEP 3: KeyManager.Start =====
-	if err := km.Start(ctx); err != nil {
-		return nil, fmt.Errorf("starting key manager for tenant %s: %w", cfg.Issuer, err)
-	}
-
-	// ===== STEP 4: RedisRefreshStore =====
+	// ===== STEP 3: RedisRefreshStore =====
 	refreshStore, err := storage.NewRedisRefreshStore(storage.RedisRefreshStoreConfig{
 		Client:    client,
 		KeyPrefix: cfg.Issuer,
@@ -95,16 +90,23 @@ func NewStaticTenantRegistry(
 		return nil, fmt.Errorf("creating redis refresh store for tenant %s: %w", cfg.Issuer, err)
 	}
 
-	// ===== STEP 5: tokens.Manager =====
+	// ===== STEP 4: tokens.Manager =====
 	manager, err := tokens.NewManager(tokens.TokenManagerConfig{
 		KeyManager:   km,
 		RefreshStore: refreshStore,
 		Logger:       observability.NewLibraryLoggerAdapter(logger),
 		Metrics:      librarymetrics.NewPrometheusMetrics(librarymetrics.PrometheusConfig{Registry: promReg}),
 		Namespace:    cfg.Issuer,
+		Issuer:       cfg.Issuer,
+		Audience:     []string{cfg.Audience},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating token manager for tenant %s: %w", cfg.Issuer, err)
+	}
+
+	// ===== STEP 5: Start — tokens.Manager.Start also starts the KeyManager =====
+	if err := manager.Start(ctx); err != nil {
+		return nil, fmt.Errorf("starting token manager for tenant %s: %w", cfg.Issuer, err)
 	}
 
 	// ===== STEP 6: Initialize and return =====

@@ -1,10 +1,11 @@
 # token-engine
 
 [![CI](https://github.com/aetomala/token-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/aetomala/token-engine/actions/workflows/ci.yml)
-[![Go 1.22+](https://img.shields.io/badge/go-1.22+-blue.svg)](https://go.dev/dl/)
+[![CD](https://github.com/aetomala/token-engine/actions/workflows/cd.yml/badge.svg)](https://github.com/aetomala/token-engine/actions/workflows/cd.yml)
+[![Go 1.26+](https://img.shields.io/badge/go-1.26+-blue.svg)](https://go.dev/dl/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v0.7.0 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
+A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v0.7.1 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
 
 ---
 
@@ -66,7 +67,8 @@ All configuration is via environment variables. The service exits fatally at sta
 | `TOKEN_ENGINE_STATIC_CALLER_KEYS` | `key=id,key=id` | required when TLS disabled | fatal exit |
 | `TOKEN_ENGINE_GRPC_ADDR` | string | `:9090` | warning + default |
 | `TOKEN_ENGINE_HTTP_ADDR` | string | `:8080` | warning + default |
-| `TOKEN_ENGINE_IDEMPOTENCY_TTL` | duration | `5m` | warning + default |
+| `TOKEN_ENGINE_IDEMPOTENCY_TTL` | duration | `24h` | warning + default |
+| `TOKEN_ENGINE_JWKS_CACHE_MAX_AGE` | duration | `5m` | warning + default |
 | `TOKEN_ENGINE_MAX_CONNECTION_AGE` | duration | `30m` | warning + default |
 | `TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE` | duration | `5m` | warning + default |
 | `TOKEN_ENGINE_REDIS_ADDR` | string | `localhost:6379` | warning + default |
@@ -143,20 +145,23 @@ Revokes all refresh tokens for a user across all audiences within a tenant.
 | `UNAUTHENTICATED` | Missing or invalid API key; expired access token |
 | `PERMISSION_DENIED` | Caller not authorized for this tenant; revoked token; invalid audience |
 | `NOT_FOUND` | Refresh token not found |
-| `INTERNAL` | Invalid key ID; missing kid claim; unexpected library error |
+| `UNAVAILABLE` | Audit store unreachable — revocation RPCs only; issuance is never gated |
+| `INTERNAL` | Invalid key ID; missing kid claim; audit record failure; unexpected library error |
 
 ---
 
 ## Observability
 
-### Health Endpoints (HTTP)
+### HTTP Endpoints
 
 | Path | Purpose |
 |---|---|
 | `GET /healthz/live` | Liveness probe — returns 200 if process is alive |
-| `GET /healthz/ready` | Readiness probe — returns 200 if service is ready |
+| `GET /healthz/ready` | Readiness probe — returns 200 if Redis, key availability, and audit store are healthy |
+| `GET /.well-known/jwks.json` | JWKS endpoint — public keys for token verification; `Cache-Control` header set via `TOKEN_ENGINE_JWKS_CACHE_MAX_AGE` |
+| `GET /metrics` | Prometheus metrics (text format) |
 
-### Metrics (HTTP)
+### Metrics
 
 Available at `GET /metrics` (Prometheus text format).
 
@@ -180,22 +185,23 @@ Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable trace export to an OTLP collector. A
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.26+
 - [buf](https://buf.build/docs/installation) (for proto regeneration)
 - [golangci-lint](https://golangci-lint.run/usage/install/) v2+
-- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) (`go install golang.org/x/vuln/cmd/govulncheck@latest`)
-- [ginkgo](https://onsi.github.io/ginkgo/#installing-ginkgo) v2 (`go install github.com/onsi/ginkgo/v2/ginkgo@v2.27.3`)
+- [ginkgo](https://onsi.github.io/ginkgo/#installing-ginkgo) v2 (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`)
 
 ### Make Targets
 
 ```bash
-make build       # Compile the binary
-make test        # Run all tests with race detector
-make coverage    # Run tests with coverage report
-make lint        # go vet + golangci-lint
-make proto-gen   # Regenerate from proto/token_engine.proto (requires buf)
-make ci          # Full CI pipeline: lint + build + test
-make clean       # Remove binary and coverage files
+make build          # Compile the binary
+make test           # Run all tests with race detector
+make coverage       # Run tests with coverage report
+make lint           # go vet + golangci-lint
+make proto-gen      # Regenerate from proto/token_engine.proto (requires buf)
+make ci             # Full CI pipeline: lint + build + test
+make docker-build   # Build Docker image locally (uses Podman by default)
+make cd             # Build and push multi-platform image to Docker Hub (requires tag)
+make clean          # Remove binary and coverage files
 ```
 
 ### Running Tests
@@ -213,8 +219,20 @@ Tests use [Ginkgo](https://onsi.github.io/ginkgo/) v2 with Gomega matchers and [
 Reproduce the full CI pipeline before pushing:
 
 ```bash
-./run-ci-locally.sh
+make ci
 ```
+
+---
+
+## Docker
+
+Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
+
+```bash
+docker pull docker.io/angeltomala/token-engine:v0.4.0
+```
+
+See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
 
 ---
 
@@ -231,9 +249,9 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | Version | Status | Key Additions |
 |---|---|---|
 | v0.1 | ✅ Complete | gRPC service, interceptor chain, static auth, in-memory idempotency, NoOp audit + reconciliation |
-| v0.2 | Planned | Single hardcoded tenant, Redis key + refresh stores, `IssueToken` + `RefreshToken` live |
-| v0.3 | Planned | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, Redis audit store |
-| v0.4 | Planned | Redis idempotency store, idempotency interceptor wired, `RefreshToken` retry safety end-to-end |
+| v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `IssueToken` + `RefreshToken` live |
+| v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, `SlogAuditStore`, CD pipeline |
+| v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
 | v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` |
 | v1.0 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, operator runbook |
 

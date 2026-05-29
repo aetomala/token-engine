@@ -44,7 +44,7 @@ type Config struct {
 	OTLPEndpoint string
 
 	// IdempotencyTTL is the TTL for idempotency store entries.
-	// env: TOKEN_ENGINE_IDEMPOTENCY_TTL; default: 5 * time.Minute
+	// env: TOKEN_ENGINE_IDEMPOTENCY_TTL; default: 24 * time.Hour
 	// parse failure — log warning, use default
 	IdempotencyTTL time.Duration
 
@@ -177,7 +177,7 @@ func Load() (*Config, error) {
 	c.RedisPassword = redisPasswordEnv
 
 	// ===== STEP 4: Parse duration fields (with warnings on failure) =====
-	defaultIdempotencyTTL := 5 * time.Minute
+	defaultIdempotencyTTL := 24 * time.Hour
 	if idempotencyTTLEnv == "" {
 		c.IdempotencyTTL = defaultIdempotencyTTL
 	} else {

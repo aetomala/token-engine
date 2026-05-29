@@ -53,6 +53,7 @@ func main() {
 
 	// ===== OTel Setup =====
 	var sdkTracer trace.Tracer
+	otelShutdown := func(context.Context) error { return nil }
 	if cfg.OTLPEndpoint != "" {
 		exporter, err := otlptracegrpc.New(
 			ctx,
@@ -71,6 +72,7 @@ func main() {
 			)),
 		)
 		sdkTracer = tp.Tracer("token-engine")
+		otelShutdown = tp.Shutdown
 	} else {
 		noopTP := tracenoop.NewTracerProvider()
 		sdkTracer = noopTP.Tracer("token-engine")
@@ -116,7 +118,7 @@ func main() {
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
 
 	// ===== Stores =====
-	idempStore := store.NewNoOpIdempotencyStore()
+	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
 	// ===== Registries =====
 	callerReg := registry.NewStaticCallerRegistry(logger)
@@ -178,18 +180,24 @@ func main() {
 
 	// ===== HTTP Server =====
 	httpServer := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: httpMux,
+		Addr:              cfg.HTTPAddr,
+		Handler:           httpMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
-	// ===== Start Servers in Goroutines =====
+	// ===== Bind gRPC Listener — fail fast on port conflict before spawning goroutines =====
+	grpcListener, err := net.Listen("tcp", cfg.GRPCAddr)
+	if err != nil {
+		log.Printf("failed to listen on %s: %v", cfg.GRPCAddr, err)
+		os.Exit(1)
+	}
+
+	// ===== Start Servers =====
 	go func() {
-		listener, err := net.Listen("tcp", cfg.GRPCAddr)
-		if err != nil {
-			log.Printf("failed to listen on %s: %v", cfg.GRPCAddr, err)
-			os.Exit(1)
-		}
-		if err := grpcServer.Serve(listener); err != nil {
+		if err := grpcServer.Serve(grpcListener); err != nil {
 			log.Printf("grpc server error: %v", err)
 		}
 	}()
@@ -206,16 +214,34 @@ func main() {
 	<-sigChan
 
 	// ===== Graceful Shutdown =====
-	// Order: gRPC drain → key manager stop → HTTP shutdown
-	grpcServer.GracefulStop()
-
+	// 30 s total budget covers gRPC drain, OTel flush, key manager, and HTTP.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// 1. Drain gRPC — 10 s sub-deadline so in-flight RPCs cannot block the full window.
+	grpcDone := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(grpcDone)
+	}()
+	select {
+	case <-grpcDone:
+	case <-time.After(10 * time.Second):
+		log.Print("graceful gRPC stop timed out; forcing stop")
+		grpcServer.Stop()
+	}
+
+	// 2. Flush buffered OTel spans before the process exits.
+	if err := otelShutdown(shutdownCtx); err != nil {
+		log.Printf("otel shutdown error: %v", err)
+	}
+
+	// 3. Stop key manager background goroutine.
 	if err := km.Shutdown(shutdownCtx); err != nil {
 		log.Printf("key manager shutdown error: %v", err)
 	}
 
+	// 4. Stop HTTP last — keeps health and metrics available through the gRPC drain.
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("http server shutdown error: %v", err)
 	}
