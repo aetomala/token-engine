@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to build and push (e.g. v0.3.0)"
+        required: true
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -27,4 +33,9 @@ jobs:
         run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login docker.io --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Build and push
-        run: make cd DOCKER=docker
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            make cd DOCKER=docker VERSION=${{ inputs.image_tag }}
+          else
+            make cd DOCKER=docker
+          fi
