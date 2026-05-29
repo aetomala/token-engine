@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	grpcMethodIssueToken = "/token.v1.TokenService/IssueToken"
+	grpcMethodIssueToken = "/token.v1.TokenEngine/IssueToken"
 
 	idempotencyRedisPrefix     = "idempotency"
 	idempotencyKeySep          = ":"

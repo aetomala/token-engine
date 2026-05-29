@@ -219,7 +219,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/RefreshToken"}, handler)
+				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RefreshToken"}, handler)
 
 				Expect(handlerCalled).To(BeTrue())
 			})
@@ -230,7 +230,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				}
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any()).Times(0)
 
-				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/RefreshToken"}, handler)
+				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RefreshToken"}, handler)
 			})
 		})
 
@@ -246,7 +246,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 				ctxNoMD := ctx
-				_, _ = sut(ctxNoMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxNoMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 
 				Expect(handlerCalled).To(BeTrue())
 			})
@@ -258,7 +258,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				}
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any()).Times(0)
 
-				_, _ = sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -283,7 +283,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -297,7 +297,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return expectedResp, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("increments token_engine_idempotency_total with result=miss", func() {
@@ -305,13 +305,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("returns the handler's response", func() {
@@ -323,7 +323,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return expectedResp, nil
 				}
-				resp, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				resp, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp).To(Equal(expectedResp))
 			})
@@ -352,7 +352,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return nil, handlerErr
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("returns the handler error", func() {
@@ -362,7 +362,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return nil, handlerErr
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).To(Equal(handlerErr))
 			})
 
@@ -370,13 +370,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return nil, handlerErr
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -409,7 +409,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					handlerCalled = true
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(handlerCalled).To(BeFalse())
 			})
@@ -422,20 +422,20 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("increments token_engine_idempotency_total with result=hit", func() {
 				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "hit",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -461,7 +461,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("calls the handler without failing the RPC", func() {
@@ -475,7 +475,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					handlerCalled = true
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(handlerCalled).To(BeTrue())
 			})
@@ -486,13 +486,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -518,7 +518,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("does not fail the RPC", func() {
@@ -530,7 +530,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -544,7 +544,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return expectedResp, nil
 				}
-				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(resp).To(Equal(expectedResp))
 			})
 
@@ -554,13 +554,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -578,7 +578,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("returns the handler's response", func() {
@@ -593,7 +593,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return expectedResp, nil
 				}
-				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(resp).To(Equal(expectedResp))
 			})
 
@@ -605,13 +605,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -629,7 +629,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("treats the entry as a miss and calls the handler", func() {
@@ -647,7 +647,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					handlerCalled = true
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(handlerCalled).To(BeTrue())
 			})
 		})
@@ -665,7 +665,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("uses 'default' as tenantID when IssueTokenRequest.TenantId is empty", func() {
@@ -680,7 +680,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 
 			It("uses IssueTokenRequest.TenantId when non-empty", func() {
@@ -695,7 +695,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -708,13 +708,13 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
-					"rpc_method": "/token.v1.TokenService/IssueToken",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
 				})
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenService/IssueToken"}, handler)
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
