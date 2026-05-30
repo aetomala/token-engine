@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"log"
 	"net"
 	"net/http"
@@ -21,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	grpchealth "google.golang.org/grpc/health"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
@@ -124,6 +127,33 @@ func main() {
 		auth = interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
 	}
 
+	// ===== gRPC Server Credentials =====
+	var grpcOpts []grpc.ServerOption
+	if cfg.TLSMode == "mtls" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			log.Printf("failed to load TLS cert/key: %v", err)
+			os.Exit(1)
+		}
+		caCert, err := os.ReadFile(cfg.TLSCAFile)
+		if err != nil {
+			log.Printf("failed to read CA cert: %v", err)
+			os.Exit(1)
+		}
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caCert) {
+			log.Printf("failed to parse CA cert from %s", cfg.TLSCAFile)
+			os.Exit(1)
+		}
+		tlsCfg := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			ClientCAs:    caPool,
+			MinVersion:   tls.VersionTLS13,
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	}
+
 	// ===== Stores =====
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
@@ -175,7 +205,7 @@ func main() {
 	validationInterceptor := interceptor.NewValidationInterceptor(logger)
 
 	// ===== gRPC Server =====
-	grpcServer := grpc.NewServer(
+	grpcServerOpts := append(grpcOpts,
 		grpc.ChainUnaryInterceptor(
 			otelgrpc.UnaryServerInterceptor(), //nolint:staticcheck // v0.52.0 pinned; NewServerHandler requires grpc.StatsHandler wiring removed in v0.60.0+
 			correlationInterceptor,
@@ -189,6 +219,7 @@ func main() {
 			MaxConnectionAgeGrace: cfg.MaxConnectionAgeGrace,
 		}),
 	)
+	grpcServer := grpc.NewServer(grpcServerOpts...)
 
 	// ===== Register Handlers =====
 	tokenHandler := handler.NewTokenHandler(tenantReg, auditStore, logger, tracer, metrics)
