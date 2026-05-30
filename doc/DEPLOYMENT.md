@@ -8,7 +8,8 @@ Before starting the service:
 - [ ] `TOKEN_ENGINE_AUDIENCE` set — non-empty string
 - [ ] `TOKEN_ENGINE_TLS_MODE` set — `mtls` or `disabled`
 - [ ] If `TLS_MODE=disabled`: `TOKEN_ENGINE_STATIC_CALLER_KEYS` set with at least one entry
-- [ ] If `TLS_MODE=mtls`: TLS certificates provisioned and accessible to the process
+- [ ] If `TLS_MODE=mtls`: `TOKEN_ENGINE_TLS_CERT_FILE`, `TOKEN_ENGINE_TLS_KEY_FILE`, `TOKEN_ENGINE_TLS_CA_FILE` must be set and files must be readable
+- [ ] `TOKEN_ENGINE_CALLER_REGISTRY_PATH` — optional; if set, must point to a valid `caller-registry.yaml` with `version: 1`
 - [ ] jwtauth `KeyManager` key store (disk or Redis) accessible and writable
 - [ ] Redis accessible if using any Redis-backed components (v0.2+)
 
@@ -18,9 +19,15 @@ Before starting the service:
 
 ### Mutual TLS (`TLS_MODE=mtls`)
 
-The gRPC server requires client certificates. Configure TLS at the process level via your deployment platform (Kubernetes service mesh, Envoy sidecar, or direct certificate injection).
+The gRPC server requires client certificates. As of v0.5, the gRPC server loads TLS credentials
+directly from the filesystem when `TLS_MODE=mtls`. Three env vars are required:
 
-The service does not load certificates directly in v0.1 — mTLS is enforced at the transport layer by the infrastructure.
+- `TOKEN_ENGINE_TLS_CERT_FILE` — path to the server PEM certificate
+- `TOKEN_ENGINE_TLS_KEY_FILE` — path to the server PEM private key
+- `TOKEN_ENGINE_TLS_CA_FILE` — path to the CA certificate used to verify client certificates
+
+Client certificates are required (`RequireAndVerifyClientCert`). Minimum TLS version: 1.3.
+Caller identity is extracted from the client certificate's Common Name (CN) field by `MTLSAuthenticator`.
 
 ### No TLS (`TLS_MODE=disabled`)
 

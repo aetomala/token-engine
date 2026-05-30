@@ -8,3 +8,4 @@
 | [ADR-004](ADR-004-noop-stubs-v01.md) | NoOp Stubs for v0.1 | Accepted | 2026-05-26 |
 | [ADR-005](ADR-005-in-memory-idempotency-v01.md) | In-Memory Idempotency Store for v0.1 | Accepted | 2026-05-26 |
 | [ADR-006](ADR-006-interceptor-chain-order.md) | Interceptor Chain Order | Accepted | 2026-05-26 |
+| [ADR-011](ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Planned (v0.6) | — |

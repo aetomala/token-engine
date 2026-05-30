@@ -92,7 +92,7 @@ token_engine_active_tenants
 |---|---|
 | Type | Counter |
 | Description | Total number of tenant registry operations |
-| Labels | _(none)_ |
+| Labels | `operation` (`add`, `drain`, `remove`) |
 
 **PromQL examples:**
 
@@ -100,6 +100,21 @@ token_engine_active_tenants
 # Registry operation rate
 rate(token_engine_tenant_registry_operations_total[5m])
 ```
+
+---
+
+---
+
+## Planned Metrics (v0.6)
+
+### token_engine_jwks_key_count
+
+| Field | Value |
+|---|---|
+| Type | Gauge |
+| Description | Number of non-expired public keys currently available in the JWKS endpoint, per tenant |
+| Labels | `tenant_id` |
+| Purpose | Canary for key rotation instability — alert if count drops to 0 for any tenant |
 
 ---
 
