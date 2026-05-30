@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TokenEngine_IssueToken_FullMethodName           = "/token.v1.TokenEngine/IssueToken"
-	TokenEngine_RefreshToken_FullMethodName         = "/token.v1.TokenEngine/RefreshToken"
-	TokenEngine_RevokeToken_FullMethodName          = "/token.v1.TokenEngine/RevokeToken"
-	TokenEngine_RevokeAllForAudience_FullMethodName = "/token.v1.TokenEngine/RevokeAllForAudience"
-	TokenEngine_RevokeAllUserTokens_FullMethodName  = "/token.v1.TokenEngine/RevokeAllUserTokens"
+	TokenEngine_IssueToken_FullMethodName                  = "/token.v1.TokenEngine/IssueToken"
+	TokenEngine_RefreshToken_FullMethodName                = "/token.v1.TokenEngine/RefreshToken"
+	TokenEngine_RevokeToken_FullMethodName                 = "/token.v1.TokenEngine/RevokeToken"
+	TokenEngine_RevokeAllForAudience_FullMethodName        = "/token.v1.TokenEngine/RevokeAllForAudience"
+	TokenEngine_RevokeAllUserTokens_FullMethodName         = "/token.v1.TokenEngine/RevokeAllUserTokens"
+	TokenEngine_RevokeAllForUserAndAudience_FullMethodName = "/token.v1.TokenEngine/RevokeAllForUserAndAudience"
 )
 
 // TokenEngineClient is the client API for TokenEngine service.
@@ -35,6 +36,7 @@ type TokenEngineClient interface {
 	RevokeToken(ctx context.Context, in *RevokeTokenRequest, opts ...grpc.CallOption) (*RevokeTokenResponse, error)
 	RevokeAllForAudience(ctx context.Context, in *RevokeAudienceRequest, opts ...grpc.CallOption) (*RevokeTokenResponse, error)
 	RevokeAllUserTokens(ctx context.Context, in *RevokeUserRequest, opts ...grpc.CallOption) (*RevokeTokenResponse, error)
+	RevokeAllForUserAndAudience(ctx context.Context, in *RevokeUserAndAudienceRequest, opts ...grpc.CallOption) (*RevokeTokenResponse, error)
 }
 
 type tokenEngineClient struct {
@@ -95,6 +97,16 @@ func (c *tokenEngineClient) RevokeAllUserTokens(ctx context.Context, in *RevokeU
 	return out, nil
 }
 
+func (c *tokenEngineClient) RevokeAllForUserAndAudience(ctx context.Context, in *RevokeUserAndAudienceRequest, opts ...grpc.CallOption) (*RevokeTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeTokenResponse)
+	err := c.cc.Invoke(ctx, TokenEngine_RevokeAllForUserAndAudience_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TokenEngineServer is the server API for TokenEngine service.
 // All implementations must embed UnimplementedTokenEngineServer
 // for forward compatibility.
@@ -104,6 +116,7 @@ type TokenEngineServer interface {
 	RevokeToken(context.Context, *RevokeTokenRequest) (*RevokeTokenResponse, error)
 	RevokeAllForAudience(context.Context, *RevokeAudienceRequest) (*RevokeTokenResponse, error)
 	RevokeAllUserTokens(context.Context, *RevokeUserRequest) (*RevokeTokenResponse, error)
+	RevokeAllForUserAndAudience(context.Context, *RevokeUserAndAudienceRequest) (*RevokeTokenResponse, error)
 	mustEmbedUnimplementedTokenEngineServer()
 }
 
@@ -128,6 +141,9 @@ func (UnimplementedTokenEngineServer) RevokeAllForAudience(context.Context, *Rev
 }
 func (UnimplementedTokenEngineServer) RevokeAllUserTokens(context.Context, *RevokeUserRequest) (*RevokeTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeAllUserTokens not implemented")
+}
+func (UnimplementedTokenEngineServer) RevokeAllForUserAndAudience(context.Context, *RevokeUserAndAudienceRequest) (*RevokeTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeAllForUserAndAudience not implemented")
 }
 func (UnimplementedTokenEngineServer) mustEmbedUnimplementedTokenEngineServer() {}
 func (UnimplementedTokenEngineServer) testEmbeddedByValue()                     {}
@@ -240,6 +256,24 @@ func _TokenEngine_RevokeAllUserTokens_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TokenEngine_RevokeAllForUserAndAudience_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeUserAndAudienceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TokenEngineServer).RevokeAllForUserAndAudience(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TokenEngine_RevokeAllForUserAndAudience_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TokenEngineServer).RevokeAllForUserAndAudience(ctx, req.(*RevokeUserAndAudienceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TokenEngine_ServiceDesc is the grpc.ServiceDesc for TokenEngine service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -266,6 +300,10 @@ var TokenEngine_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeAllUserTokens",
 			Handler:    _TokenEngine_RevokeAllUserTokens_Handler,
+		},
+		{
+			MethodName: "RevokeAllForUserAndAudience",
+			Handler:    _TokenEngine_RevokeAllForUserAndAudience_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

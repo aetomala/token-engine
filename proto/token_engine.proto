@@ -10,6 +10,7 @@ service TokenEngine {
   rpc RevokeToken(RevokeTokenRequest)              returns (RevokeTokenResponse);
   rpc RevokeAllForAudience(RevokeAudienceRequest)  returns (RevokeTokenResponse);
   rpc RevokeAllUserTokens(RevokeUserRequest)        returns (RevokeTokenResponse);
+  rpc RevokeAllForUserAndAudience(RevokeUserAndAudienceRequest) returns (RevokeTokenResponse);
 }
 
 message IssueTokenRequest {
@@ -40,6 +41,16 @@ message RevokeAudienceRequest {
 message RevokeUserRequest {
   string user_id   = 1;
   string tenant_id = 2;
+}
+
+message RevokeUserAndAudienceRequest {
+  string user_id   = 1;
+  string audience  = 2;
+  string tenant_id = 3;
+  // IMPORTANT: Revocation is atomic. Revoking for a user+audience combination
+  // revokes the entire refresh token record, not just the targeted audience.
+  // If independent revocability per audience is required, issue separate tokens.
+  // See ADR-009.
 }
 
 message TokenPair {

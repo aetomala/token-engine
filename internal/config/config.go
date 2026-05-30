@@ -64,6 +64,30 @@ type Config struct {
 	// parse failure or empty map when TLSMode=="disabled" — log error and os.Exit(1)
 	StaticCallerKeys map[string]string
 
+	// TLSCertFile is the path to the service's TLS certificate file (PEM).
+	// env: TOKEN_ENGINE_TLS_CERT_FILE; no default
+	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// ignored when TLSMode == "disabled"
+	TLSCertFile string
+
+	// TLSKeyFile is the path to the service's TLS private key file (PEM).
+	// env: TOKEN_ENGINE_TLS_KEY_FILE; no default
+	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// ignored when TLSMode == "disabled"
+	TLSKeyFile string
+
+	// TLSCAFile is the path to the CA certificate file for client certificate verification (PEM).
+	// env: TOKEN_ENGINE_TLS_CA_FILE; no default
+	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// ignored when TLSMode == "disabled"
+	TLSCAFile string
+
+	// CallerRegistryPath is the filesystem path to the caller-registry YAML file.
+	// env: TOKEN_ENGINE_CALLER_REGISTRY_PATH; no default
+	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// optional when TLSMode == "disabled" — empty string is valid when disabled
+	CallerRegistryPath string
+
 	// RedisAddr is the Redis server address.
 	// env: TOKEN_ENGINE_REDIS_ADDR; default: "localhost:6379"
 	// parse failure — log warning, use default
@@ -103,6 +127,10 @@ func Load() (*Config, error) {
 	maxConnectionAgeEnv := os.Getenv("TOKEN_ENGINE_MAX_CONNECTION_AGE")
 	maxConnectionAgeGraceEnv := os.Getenv("TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE")
 	staticCallerKeysEnv := os.Getenv("TOKEN_ENGINE_STATIC_CALLER_KEYS")
+	tlsCertFileEnv := os.Getenv("TOKEN_ENGINE_TLS_CERT_FILE")
+	tlsKeyFileEnv := os.Getenv("TOKEN_ENGINE_TLS_KEY_FILE")
+	tlsCAFileEnv := os.Getenv("TOKEN_ENGINE_TLS_CA_FILE")
+	callerRegistryPathEnv := os.Getenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH")
 	redisAddrEnv := os.Getenv("TOKEN_ENGINE_REDIS_ADDR")
 	redisPasswordEnv := os.Getenv("TOKEN_ENGINE_REDIS_PASSWORD")
 	redisDBEnv := os.Getenv("TOKEN_ENGINE_REDIS_DB")
@@ -153,6 +181,26 @@ func Load() (*Config, error) {
 	}
 	c.StaticCallerKeys = staticCallerKeys
 
+	// Validate TLS fields when TLSMode == "mtls"
+	if c.TLSMode == "mtls" {
+		if tlsCertFileEnv == "" {
+			log.Printf("TOKEN_ENGINE_TLS_CERT_FILE must not be empty when TLSMode is mtls")
+			os.Exit(1)
+		}
+		if tlsKeyFileEnv == "" {
+			log.Printf("TOKEN_ENGINE_TLS_KEY_FILE must not be empty when TLSMode is mtls")
+			os.Exit(1)
+		}
+		if tlsCAFileEnv == "" {
+			log.Printf("TOKEN_ENGINE_TLS_CA_FILE must not be empty when TLSMode is mtls")
+			os.Exit(1)
+		}
+		if callerRegistryPathEnv == "" {
+			log.Printf("TOKEN_ENGINE_CALLER_REGISTRY_PATH must not be empty when TLSMode is mtls")
+			os.Exit(1)
+		}
+	}
+
 	// ===== STEP 3: Apply string defaults =====
 	if grpcAddrEnv == "" {
 		c.GRPCAddr = ":9090"
@@ -167,6 +215,11 @@ func Load() (*Config, error) {
 	}
 
 	c.OTLPEndpoint = otlpEndpointEnv
+
+	c.TLSCertFile = tlsCertFileEnv
+	c.TLSKeyFile = tlsKeyFileEnv
+	c.TLSCAFile = tlsCAFileEnv
+	c.CallerRegistryPath = callerRegistryPathEnv
 
 	if redisAddrEnv == "" {
 		c.RedisAddr = "localhost:6379"
