@@ -18,9 +18,10 @@ A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala
 | `RevokeToken` | Revoke a single refresh token immediately |
 | `RevokeAllForAudience` | Revoke all tokens scoped to an audience |
 | `RevokeAllUserTokens` | Revoke all tokens for a user across all audiences |
+| `RevokeAllForUserAndAudience` | Revoke all tokens for a user within a specific audience |
 
 **Interceptor chain (applied to every RPC):**
-OpenTelemetry tracing → Correlation ID → API key authentication → Caller authorization → Idempotency → Request validation
+OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN) → Caller authorization → Idempotency → Request validation
 
 **Observability:** Prometheus metrics at `/metrics`, OpenTelemetry traces via OTLP, structured slog logging with correlation IDs, health probes at `/healthz/live` and `/healthz/ready`.
 
@@ -65,6 +66,10 @@ All configuration is via environment variables. The service exits fatally at sta
 | `TOKEN_ENGINE_AUDIENCE` | string | **required** | fatal exit |
 | `TOKEN_ENGINE_TLS_MODE` | `mtls` \| `disabled` | `mtls` | fatal exit |
 | `TOKEN_ENGINE_STATIC_CALLER_KEYS` | `key=id,key=id` | required when TLS disabled | fatal exit |
+| `TOKEN_ENGINE_TLS_CERT_FILE` | string | `` | required when `TLS_MODE=mtls` |
+| `TOKEN_ENGINE_TLS_KEY_FILE` | string | `` | required when `TLS_MODE=mtls` |
+| `TOKEN_ENGINE_TLS_CA_FILE` | string | `` | required when `TLS_MODE=mtls` |
+| `TOKEN_ENGINE_CALLER_REGISTRY_PATH` | string | `` | optional; path to `caller-registry.yaml` |
 | `TOKEN_ENGINE_GRPC_ADDR` | string | `:9090` | warning + default |
 | `TOKEN_ENGINE_HTTP_ADDR` | string | `:8080` | warning + default |
 | `TOKEN_ENGINE_IDEMPOTENCY_TTL` | duration | `24h` | warning + default |
@@ -136,6 +141,16 @@ Revokes all refresh tokens for a user across all audiences within a tenant.
 | Field | Type | Description |
 |---|---|---|
 | `user_id` | string | User whose tokens are revoked (required) |
+| `tenant_id` | string | Tenant scope (required) |
+
+### RevokeAllForUserAndAudience
+
+Revokes all refresh tokens for a user within a specific audience.
+
+| Field | Type | Description |
+|---|---|---|
+| `user_id` | string | User whose tokens are revoked (required) |
+| `audience` | string | Audience scope (required) |
 | `tenant_id` | string | Tenant scope (required) |
 
 ### Error Codes
@@ -252,8 +267,8 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `IssueToken` + `RefreshToken` live |
 | v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, `SlogAuditStore`, CD pipeline |
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
-| v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` |
-| v1.0 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, operator runbook |
+| v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC; `MTLSAuthenticator`; static YAML caller registry; `MultiTenantRegistry` with `Add`/`Drain`/`Remove`; mTLS gRPC server credentials (TLS 1.3 min) |
+| v0.6 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, `RefreshToken` idempotency, operator runbook |
 
 ---
 

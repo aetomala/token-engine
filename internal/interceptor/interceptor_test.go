@@ -2,6 +2,9 @@ package interceptor_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"time"
 
@@ -14,10 +17,21 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
+
+// peerCtxWithCN builds a context containing a fake TLS peer with the given Common Name.
+func peerCtxWithCN(cn string) context.Context {
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: cn}}
+	tlsInfo := credentials.TLSInfo{
+		State: tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}},
+	}
+	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: tlsInfo})
+}
 
 var _ = Describe("AuthInterceptor", func() {
 	var (
@@ -762,14 +776,79 @@ var _ = Describe("ValidationInterceptor (v0.1 stub)", func() {
 	}) // Phase 3
 })
 
-var _ = Describe("CallerAuthorizationInterceptor (v0.1 stub)", func() {
+var _ = Describe("MTLSAuthenticator", func() {
+	var sut *interceptor.MTLSAuthenticator
+
+	BeforeEach(func() {
+		sut = interceptor.NewMTLSAuthenticator()
+	})
+
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: Core Operations", func() {
+	Context("when peer has a valid TLS certificate with non-empty CN", func() {
+		It("returns the CN as caller identity", func() {
+			ctx := peerCtxWithCN("service-a")
+
+			identity, err := sut.Authenticate(ctx)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(identity).To(Equal("service-a"))
+		})
+	})
+
+	Context("when no peer information in context", func() {
+		It("returns codes.Unauthenticated", func() {
+			_, err := sut.Authenticate(context.Background())
+
+			Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
+		})
+	})
+
+	Context("when peer has no TLS credentials", func() {
+		It("returns codes.Unauthenticated", func() {
+			ctx := peer.NewContext(context.Background(), &peer.Peer{
+				AuthInfo: nil,
+			})
+
+			_, err := sut.Authenticate(ctx)
+
+			Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
+		})
+	})
+
+	Context("when peer has no certificates", func() {
+		It("returns codes.Unauthenticated", func() {
+			tlsInfo := credentials.TLSInfo{
+				State: tls.ConnectionState{PeerCertificates: nil},
+			}
+			ctx := peer.NewContext(context.Background(), &peer.Peer{AuthInfo: tlsInfo})
+
+			_, err := sut.Authenticate(ctx)
+
+			Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
+		})
+	})
+
+	Context("when leaf certificate has empty Common Name", func() {
+		It("returns codes.Unauthenticated", func() {
+			ctx := peerCtxWithCN("")
+
+			_, err := sut.Authenticate(ctx)
+
+			Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
+		})
+	})
+	}) // Phase 3
+})
+
+var _ = Describe("CallerAuthorizationInterceptor", func() {
 	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-		ctrl   *gomock.Controller
+		ctx          context.Context
+		cancel       context.CancelFunc
+		ctrl         *gomock.Controller
 		mockRegistry *testutil.MockCallerRegistry
-		mockLogger *testutil.MockLogger
-		sut grpc.UnaryServerInterceptor
+		mockLogger   *testutil.MockLogger
+		sut          grpc.UnaryServerInterceptor
 	)
 
 	BeforeEach(func() {
@@ -787,19 +866,97 @@ var _ = Describe("CallerAuthorizationInterceptor (v0.1 stub)", func() {
 
 	// ===== PHASE 3: Core Operations =====
 	Describe("Phase 3: Core Operations", func() {
-	Context("always", func() {
-		It("calls the handler and returns its result unchanged", func() {
-			expectedResp := "authorized"
-			expectedErr := errors.New("authorization error")
-
+	Context("when method is gRPC health protocol", func() {
+		It("calls the handler without checking the registry", func() {
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			handlerCalled := false
 			handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
-				return expectedResp, expectedErr
+				handlerCalled = true
+				return "ok", nil
 			}
 
-			resp, err := sut(ctx, nil, &grpc.UnaryServerInfo{}, handler)
+			_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/grpc.health.v1.Health/Check"}, handler)
 
-			Expect(resp).To(Equal(expectedResp))
-			Expect(err).To(Equal(expectedErr))
+			Expect(handlerCalled).To(BeTrue())
+		})
+	})
+
+	Context("when caller identity is empty in context", func() {
+		It("returns codes.Internal without calling the registry", func() {
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			_, err := sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, nil)
+
+			Expect(status.Code(err)).To(Equal(codes.Internal))
+		})
+	})
+
+	Context("when caller is permitted for the tenant", func() {
+		BeforeEach(func() {
+			ctx = observability.WithCallerIdentity(ctx, "service-a")
+		})
+
+		It("calls the handler", func() {
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), "service-a", gomock.Any()).Return(true, nil)
+			handlerCalled := false
+			handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
+				handlerCalled = true
+				return "resp", nil
+			}
+
+			_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+
+			Expect(handlerCalled).To(BeTrue())
+		})
+
+		It("returns the handler's response", func() {
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), "service-a", gomock.Any()).Return(true, nil)
+			expected := "the-response"
+			handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
+				return expected, nil
+			}
+
+			resp, err := sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp).To(Equal(expected))
+		})
+	})
+
+	Context("when IsPermitted returns codes.PermissionDenied", func() {
+		BeforeEach(func() {
+			ctx = observability.WithCallerIdentity(ctx, "service-b")
+		})
+
+		It("returns the error without calling the handler", func() {
+			permErr := status.Error(codes.PermissionDenied, "caller not authorized")
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), "service-b", gomock.Any()).Return(false, permErr)
+			handlerCalled := false
+			handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
+				handlerCalled = true
+				return nil, nil
+			}
+
+			_, err := sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+
+			Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+			Expect(handlerCalled).To(BeFalse())
+		})
+	})
+
+	Context("when req does not implement TenantAwareRequest", func() {
+		BeforeEach(func() {
+			ctx = observability.WithCallerIdentity(ctx, "service-a")
+		})
+
+		It("passes tenantID as empty string to IsPermitted", func() {
+			mockRegistry.EXPECT().IsPermitted(gomock.Any(), "service-a", "").Return(true, nil)
+			handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
+				return "ok", nil
+			}
+
+			// Pass a non-TenantAwareRequest value (plain string, not a proto message)
+			_, _ = sut(ctx, "not-a-tenant-aware-req", &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 		})
 	})
 	}) // Phase 3

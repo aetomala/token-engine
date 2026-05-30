@@ -1,0 +1,18 @@
+# caller-registry.yaml — static caller authorization configuration
+# Format version: 1 (only supported version)
+# Changes require service restart.
+#
+# Each caller entry maps a TLS certificate Common Name (identity) to the
+# tenant IDs it is permitted to operate on.
+# Identity values must match the CN field of the caller's TLS client certificate.
+#
+# Example:
+version: 1
+callers:
+  - identity: "example-auth-service"
+    permitted_tenants:
+      - "example-tenant"
+  - identity: "example-admin-service"
+    permitted_tenants:
+      - "example-tenant"
+      - "other-tenant"

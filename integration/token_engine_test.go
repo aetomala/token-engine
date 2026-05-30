@@ -63,19 +63,30 @@ var _ = BeforeSuite(func() {
 	// ===== Prometheus registry =====
 	promReg := prometheus.NewRegistry()
 
-	// ===== StaticTenantRegistry — km.Start() generates RSA keys; allow 30s =====
+	// ===== MultiTenantRegistry — km stack generation takes up to 30s =====
 	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer initCancel()
-	tenantReg, err := registry.NewStaticTenantRegistry(initCtx, redisClient, cfg, promReg, logger, tracer, metrics)
-	Expect(err).NotTo(HaveOccurred())
-	km = tenantReg.KeyManager()
+	tenantReg := registry.NewMultiTenantRegistry(redisClient, promReg, logger, tracer, metrics)
+	Expect(tenantReg.Add(initCtx, cfg.Issuer, registry.TenantConfig{
+		Issuer:   cfg.Issuer,
+		Audience: cfg.Audience,
+	})).To(Succeed())
+	kms := tenantReg.AllKeyManagers()
+	km = kms[cfg.Issuer]
 
 	// ===== Idempotency store =====
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
 	// ===== Interceptors (same order as main.go, otelgrpc skipped — noop OTel not needed) =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
-	callerReg := registry.NewStaticCallerRegistry(logger)
+	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
+		Version: 1,
+		Callers: []registry.CallerEntry{
+			// test-caller is permitted for test-issuer (normal flow) and unknown-tenant
+			// (so the "unknown tenant" integration test reaches the registry and gets NotFound).
+			{Identity: "test-caller", PermittedTenants: []string{"test-issuer", "unknown-tenant"}},
+		},
+	}, logger)
 
 	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
@@ -318,6 +329,39 @@ var _ = Describe("TokenEngine", func() {
 				defer cancel2()
 				_, err = client.RevokeAllUserTokens(ctx2, &tokenv1.RevokeUserRequest{
 					UserId:   "user-5",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx3, cancel3 := authCtx()
+				defer cancel3()
+				_, err = client.RefreshToken(ctx3, &tokenv1.RefreshTokenRequest{
+					RefreshToken: issued.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(status.Code(err)).NotTo(Equal(codes.OK))
+			})
+		})
+	})
+
+	// ===== RevokeAllForUserAndAudience =====
+	Describe("RevokeAllForUserAndAudience", func() {
+		Context("after revoking all tokens for a user and audience", func() {
+			It("causes a subsequent RefreshToken call for that user to fail", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				issued, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-6",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := authCtx()
+				defer cancel2()
+				_, err = client.RevokeAllForUserAndAudience(ctx2, &tokenv1.RevokeUserAndAudienceRequest{
+					UserId:   "user-6",
+					Audience: "api",
 					TenantId: "test-issuer",
 				})
 				Expect(err).NotTo(HaveOccurred())

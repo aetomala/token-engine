@@ -321,6 +321,66 @@ func (x *RevokeUserRequest) GetTenantId() string {
 	return ""
 }
 
+type RevokeUserAndAudienceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Audience      string                 `protobuf:"bytes,2,opt,name=audience,proto3" json:"audience,omitempty"`
+	TenantId      string                 `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeUserAndAudienceRequest) Reset() {
+	*x = RevokeUserAndAudienceRequest{}
+	mi := &file_token_engine_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeUserAndAudienceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeUserAndAudienceRequest) ProtoMessage() {}
+
+func (x *RevokeUserAndAudienceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_token_engine_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeUserAndAudienceRequest.ProtoReflect.Descriptor instead.
+func (*RevokeUserAndAudienceRequest) Descriptor() ([]byte, []int) {
+	return file_token_engine_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RevokeUserAndAudienceRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *RevokeUserAndAudienceRequest) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
+func (x *RevokeUserAndAudienceRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
 type TokenPair struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken           string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
@@ -333,7 +393,7 @@ type TokenPair struct {
 
 func (x *TokenPair) Reset() {
 	*x = TokenPair{}
-	mi := &file_token_engine_proto_msgTypes[5]
+	mi := &file_token_engine_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -345,7 +405,7 @@ func (x *TokenPair) String() string {
 func (*TokenPair) ProtoMessage() {}
 
 func (x *TokenPair) ProtoReflect() protoreflect.Message {
-	mi := &file_token_engine_proto_msgTypes[5]
+	mi := &file_token_engine_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -358,7 +418,7 @@ func (x *TokenPair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenPair.ProtoReflect.Descriptor instead.
 func (*TokenPair) Descriptor() ([]byte, []int) {
-	return file_token_engine_proto_rawDescGZIP(), []int{5}
+	return file_token_engine_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *TokenPair) GetAccessToken() string {
@@ -397,7 +457,7 @@ type RevokeTokenResponse struct {
 
 func (x *RevokeTokenResponse) Reset() {
 	*x = RevokeTokenResponse{}
-	mi := &file_token_engine_proto_msgTypes[6]
+	mi := &file_token_engine_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -409,7 +469,7 @@ func (x *RevokeTokenResponse) String() string {
 func (*RevokeTokenResponse) ProtoMessage() {}
 
 func (x *RevokeTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_token_engine_proto_msgTypes[6]
+	mi := &file_token_engine_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -422,7 +482,7 @@ func (x *RevokeTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeTokenResponse.ProtoReflect.Descriptor instead.
 func (*RevokeTokenResponse) Descriptor() ([]byte, []int) {
-	return file_token_engine_proto_rawDescGZIP(), []int{6}
+	return file_token_engine_proto_rawDescGZIP(), []int{7}
 }
 
 var File_token_engine_proto protoreflect.FileDescriptor
@@ -455,20 +515,25 @@ const file_token_engine_proto_rawDesc = "" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"I\n" +
 	"\x11RevokeUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\xc3\x01\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"p\n" +
+	"\x1cRevokeUserAndAudienceRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1a\n" +
+	"\baudience\x18\x02 \x01(\tR\baudience\x12\x1b\n" +
+	"\ttenant_id\x18\x03 \x01(\tR\btenantId\"\xc3\x01\n" +
 	"\tTokenPair\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x125\n" +
 	"\x17access_token_expires_in\x18\x03 \x01(\x03R\x14accessTokenExpiresIn\x127\n" +
 	"\x18refresh_token_expires_in\x18\x04 \x01(\x03R\x15refreshTokenExpiresIn\"\x15\n" +
-	"\x13RevokeTokenResponse2\x88\x03\n" +
+	"\x13RevokeTokenResponse2\xee\x03\n" +
 	"\vTokenEngine\x12>\n" +
 	"\n" +
 	"IssueToken\x12\x1b.token.v1.IssueTokenRequest\x1a\x13.token.v1.TokenPair\x12B\n" +
 	"\fRefreshToken\x12\x1d.token.v1.RefreshTokenRequest\x1a\x13.token.v1.TokenPair\x12J\n" +
 	"\vRevokeToken\x12\x1c.token.v1.RevokeTokenRequest\x1a\x1d.token.v1.RevokeTokenResponse\x12V\n" +
 	"\x14RevokeAllForAudience\x12\x1f.token.v1.RevokeAudienceRequest\x1a\x1d.token.v1.RevokeTokenResponse\x12Q\n" +
-	"\x13RevokeAllUserTokens\x12\x1b.token.v1.RevokeUserRequest\x1a\x1d.token.v1.RevokeTokenResponseB1Z/github.com/aetomala/token-engine/gen/v1;tokenv1b\x06proto3"
+	"\x13RevokeAllUserTokens\x12\x1b.token.v1.RevokeUserRequest\x1a\x1d.token.v1.RevokeTokenResponse\x12d\n" +
+	"\x1bRevokeAllForUserAndAudience\x12&.token.v1.RevokeUserAndAudienceRequest\x1a\x1d.token.v1.RevokeTokenResponseB1Z/github.com/aetomala/token-engine/gen/v1;tokenv1b\x06proto3"
 
 var (
 	file_token_engine_proto_rawDescOnce sync.Once
@@ -482,33 +547,36 @@ func file_token_engine_proto_rawDescGZIP() []byte {
 	return file_token_engine_proto_rawDescData
 }
 
-var file_token_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_token_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_token_engine_proto_goTypes = []any{
-	(*IssueTokenRequest)(nil),     // 0: token.v1.IssueTokenRequest
-	(*RefreshTokenRequest)(nil),   // 1: token.v1.RefreshTokenRequest
-	(*RevokeTokenRequest)(nil),    // 2: token.v1.RevokeTokenRequest
-	(*RevokeAudienceRequest)(nil), // 3: token.v1.RevokeAudienceRequest
-	(*RevokeUserRequest)(nil),     // 4: token.v1.RevokeUserRequest
-	(*TokenPair)(nil),             // 5: token.v1.TokenPair
-	(*RevokeTokenResponse)(nil),   // 6: token.v1.RevokeTokenResponse
-	nil,                           // 7: token.v1.IssueTokenRequest.ClaimsEntry
-	nil,                           // 8: token.v1.RefreshTokenRequest.ClaimsEntry
+	(*IssueTokenRequest)(nil),            // 0: token.v1.IssueTokenRequest
+	(*RefreshTokenRequest)(nil),          // 1: token.v1.RefreshTokenRequest
+	(*RevokeTokenRequest)(nil),           // 2: token.v1.RevokeTokenRequest
+	(*RevokeAudienceRequest)(nil),        // 3: token.v1.RevokeAudienceRequest
+	(*RevokeUserRequest)(nil),            // 4: token.v1.RevokeUserRequest
+	(*RevokeUserAndAudienceRequest)(nil), // 5: token.v1.RevokeUserAndAudienceRequest
+	(*TokenPair)(nil),                    // 6: token.v1.TokenPair
+	(*RevokeTokenResponse)(nil),          // 7: token.v1.RevokeTokenResponse
+	nil,                                  // 8: token.v1.IssueTokenRequest.ClaimsEntry
+	nil,                                  // 9: token.v1.RefreshTokenRequest.ClaimsEntry
 }
 var file_token_engine_proto_depIdxs = []int32{
-	7, // 0: token.v1.IssueTokenRequest.claims:type_name -> token.v1.IssueTokenRequest.ClaimsEntry
-	8, // 1: token.v1.RefreshTokenRequest.claims:type_name -> token.v1.RefreshTokenRequest.ClaimsEntry
+	8, // 0: token.v1.IssueTokenRequest.claims:type_name -> token.v1.IssueTokenRequest.ClaimsEntry
+	9, // 1: token.v1.RefreshTokenRequest.claims:type_name -> token.v1.RefreshTokenRequest.ClaimsEntry
 	0, // 2: token.v1.TokenEngine.IssueToken:input_type -> token.v1.IssueTokenRequest
 	1, // 3: token.v1.TokenEngine.RefreshToken:input_type -> token.v1.RefreshTokenRequest
 	2, // 4: token.v1.TokenEngine.RevokeToken:input_type -> token.v1.RevokeTokenRequest
 	3, // 5: token.v1.TokenEngine.RevokeAllForAudience:input_type -> token.v1.RevokeAudienceRequest
 	4, // 6: token.v1.TokenEngine.RevokeAllUserTokens:input_type -> token.v1.RevokeUserRequest
-	5, // 7: token.v1.TokenEngine.IssueToken:output_type -> token.v1.TokenPair
-	5, // 8: token.v1.TokenEngine.RefreshToken:output_type -> token.v1.TokenPair
-	6, // 9: token.v1.TokenEngine.RevokeToken:output_type -> token.v1.RevokeTokenResponse
-	6, // 10: token.v1.TokenEngine.RevokeAllForAudience:output_type -> token.v1.RevokeTokenResponse
-	6, // 11: token.v1.TokenEngine.RevokeAllUserTokens:output_type -> token.v1.RevokeTokenResponse
-	7, // [7:12] is the sub-list for method output_type
-	2, // [2:7] is the sub-list for method input_type
+	5, // 7: token.v1.TokenEngine.RevokeAllForUserAndAudience:input_type -> token.v1.RevokeUserAndAudienceRequest
+	6, // 8: token.v1.TokenEngine.IssueToken:output_type -> token.v1.TokenPair
+	6, // 9: token.v1.TokenEngine.RefreshToken:output_type -> token.v1.TokenPair
+	7, // 10: token.v1.TokenEngine.RevokeToken:output_type -> token.v1.RevokeTokenResponse
+	7, // 11: token.v1.TokenEngine.RevokeAllForAudience:output_type -> token.v1.RevokeTokenResponse
+	7, // 12: token.v1.TokenEngine.RevokeAllUserTokens:output_type -> token.v1.RevokeTokenResponse
+	7, // 13: token.v1.TokenEngine.RevokeAllForUserAndAudience:output_type -> token.v1.RevokeTokenResponse
+	8, // [8:14] is the sub-list for method output_type
+	2, // [2:8] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -525,7 +593,7 @@ func file_token_engine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_token_engine_proto_rawDesc), len(file_token_engine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

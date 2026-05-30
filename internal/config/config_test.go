@@ -36,6 +36,10 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_REDIS_PASSWORD")
 		os.Unsetenv("TOKEN_ENGINE_REDIS_DB")
 		os.Unsetenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
+		os.Unsetenv("TOKEN_ENGINE_TLS_CERT_FILE")
+		os.Unsetenv("TOKEN_ENGINE_TLS_KEY_FILE")
+		os.Unsetenv("TOKEN_ENGINE_TLS_CA_FILE")
+		os.Unsetenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH")
 	}
 
 	AfterEach(func() {
@@ -245,6 +249,133 @@ var _ = Describe("Config", func() {
 				"key1": "caller1",
 			}))
 			Expect(cfg.StaticCallerKeys).NotTo(BeEmpty())
+
+			cleanupEnvVars()
+		})
+	})
+	Context("when TLSMode is 'mtls' and all TLS fields are present", func() {
+		It("stores TLSCertFile, TLSKeyFile, TLSCAFile, CallerRegistryPath", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+			os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+			os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.TLSCertFile).To(Equal("/path/to/cert.pem"))
+			Expect(cfg.TLSKeyFile).To(Equal("/path/to/key.pem"))
+			Expect(cfg.TLSCAFile).To(Equal("/path/to/ca.pem"))
+			Expect(cfg.CallerRegistryPath).To(Equal("/path/to/caller-registry.yaml"))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_CERT_FILE is absent", func() {
+		It("logs error and exits 1", func() {
+			if os.Getenv("TEST_SUBPROCESS") == "mtls_cert_file_absent" {
+				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
+				config.Load()
+				return
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
+			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_cert_file_absent")
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			Expect(errors.As(err, &exitErr)).To(BeTrue())
+			Expect(exitErr.ExitCode()).To(Equal(1))
+		})
+	})
+
+	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_KEY_FILE is absent", func() {
+		It("logs error and exits 1", func() {
+			if os.Getenv("TEST_SUBPROCESS") == "mtls_key_file_absent" {
+				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
+				config.Load()
+				return
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
+			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_key_file_absent")
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			Expect(errors.As(err, &exitErr)).To(BeTrue())
+			Expect(exitErr.ExitCode()).To(Equal(1))
+		})
+	})
+
+	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_CA_FILE is absent", func() {
+		It("logs error and exits 1", func() {
+			if os.Getenv("TEST_SUBPROCESS") == "mtls_ca_file_absent" {
+				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
+				config.Load()
+				return
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
+			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_ca_file_absent")
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			Expect(errors.As(err, &exitErr)).To(BeTrue())
+			Expect(exitErr.ExitCode()).To(Equal(1))
+		})
+	})
+
+	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_CALLER_REGISTRY_PATH is absent", func() {
+		It("logs error and exits 1", func() {
+			if os.Getenv("TEST_SUBPROCESS") == "mtls_caller_registry_absent" {
+				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+				config.Load()
+				return
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
+			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_caller_registry_absent")
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			Expect(errors.As(err, &exitErr)).To(BeTrue())
+			Expect(exitErr.ExitCode()).To(Equal(1))
+		})
+	})
+
+	Context("when TLSMode is 'disabled' and TOKEN_ENGINE_CALLER_REGISTRY_PATH is absent", func() {
+		It("stores empty CallerRegistryPath without error", func() {
+			setRequiredEnvVars()
+			// TOKEN_ENGINE_CALLER_REGISTRY_PATH not set
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.CallerRegistryPath).To(Equal(""))
 
 			cleanupEnvVars()
 		})
