@@ -18,14 +18,39 @@ import (
 	"github.com/aetomala/token-engine/internal/observability"
 )
 
-// TenantRegistry provides tenant-aware token manager lookup.
+// TenantRegistry provides tenant-aware token manager lookup and lifecycle management.
+// All methods are safe for concurrent use.
 type TenantRegistry interface {
-	// Get returns the Manager for the given tenantID.
+	// Get returns the TokenManager for tenantID.
+	// Returns codes.InvalidArgument if tenantID is "".
 	// Returns codes.NotFound if tenantID is unknown or draining.
-	// Returns codes.InvalidArgument if tenantID is empty string "".
-	// Absent tenant_id (zero-value from proto unmarshalling) routes to the default tenant —
-	// the registry receives "" only when the caller explicitly sends "".
 	Get(ctx context.Context, tenantID string) (tokens.TokenManager, error)
+
+	// Add constructs and registers a new tenant.
+	// Starts the tenant's KeyManager before returning.
+	// Returns codes.AlreadyExists if tenantID is already registered.
+	// Returns codes.InvalidArgument if tenantID is "", cfg.Issuer is "", or cfg.Audience is "".
+	Add(ctx context.Context, tenantID string, cfg TenantConfig) error
+
+	// Drain marks tenantID as draining. Subsequent Get calls return codes.NotFound.
+	// In-flight requests already past the registry lookup are unaffected.
+	// Returns codes.NotFound if tenantID is not registered.
+	// Returns codes.InvalidArgument if tenantID is "".
+	Drain(ctx context.Context, tenantID string) error
+
+	// Remove stops the tenant's KeyManager and removes it from the registry.
+	// Must be called only after Drain.
+	// Returns codes.NotFound if tenantID is not registered.
+	// Returns codes.InvalidArgument if tenantID is "".
+	Remove(ctx context.Context, tenantID string) error
+}
+
+// TenantConfig is the per-tenant configuration passed to TenantRegistry.Add.
+// Issuer is used as the Redis key prefix, library namespace, and JWT iss claim.
+// Audience is the default JWT audience for tokens issued under this tenant.
+type TenantConfig struct {
+	Issuer   string
+	Audience string
 }
 
 // ===== Constants =====
@@ -40,6 +65,8 @@ const (
 // StaticTenantRegistry is a single-tenant implementation of TenantRegistry backed by Redis.
 // It builds and owns the full jwtauth key manager and token manager stack for the configured issuer.
 // All methods are safe for concurrent use.
+var _ TenantRegistry = (*StaticTenantRegistry)(nil)
+
 type StaticTenantRegistry struct {
 	manager *tokens.Manager
 	km      keys.KeyManager
@@ -122,6 +149,22 @@ func NewStaticTenantRegistry(
 // during graceful shutdown.
 func (r *StaticTenantRegistry) KeyManager() keys.KeyManager {
 	return r.km
+}
+
+// Add returns codes.Unimplemented — StaticTenantRegistry does not support dynamic tenant management.
+// Use MultiTenantRegistry for Add/Drain/Remove lifecycle.
+func (r *StaticTenantRegistry) Add(_ context.Context, _ string, _ TenantConfig) error {
+	return status.Error(codes.Unimplemented, "Add not supported on StaticTenantRegistry — use MultiTenantRegistry")
+}
+
+// Drain returns codes.Unimplemented — StaticTenantRegistry does not support dynamic tenant management.
+func (r *StaticTenantRegistry) Drain(_ context.Context, _ string) error {
+	return status.Error(codes.Unimplemented, "Drain not supported on StaticTenantRegistry — use MultiTenantRegistry")
+}
+
+// Remove returns codes.Unimplemented — StaticTenantRegistry does not support dynamic tenant management.
+func (r *StaticTenantRegistry) Remove(_ context.Context, _ string) error {
+	return status.Error(codes.Unimplemented, "Remove not supported on StaticTenantRegistry — use MultiTenantRegistry")
 }
 
 // Get returns the tokens.Manager for the given tenantID.
