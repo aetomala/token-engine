@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	tokens "github.com/aetomala/jwtauth/pkg/tokens"
+	registry "github.com/aetomala/token-engine/internal/registry"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,6 +42,34 @@ func (m *MockTenantRegistry) EXPECT() *MockTenantRegistryMockRecorder {
 	return m.recorder
 }
 
+// Add mocks base method.
+func (m *MockTenantRegistry) Add(ctx context.Context, tenantID string, cfg registry.TenantConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Add", ctx, tenantID, cfg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Add indicates an expected call of Add.
+func (mr *MockTenantRegistryMockRecorder) Add(ctx, tenantID, cfg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Add", reflect.TypeOf((*MockTenantRegistry)(nil).Add), ctx, tenantID, cfg)
+}
+
+// Drain mocks base method.
+func (m *MockTenantRegistry) Drain(ctx context.Context, tenantID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Drain", ctx, tenantID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Drain indicates an expected call of Drain.
+func (mr *MockTenantRegistryMockRecorder) Drain(ctx, tenantID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Drain", reflect.TypeOf((*MockTenantRegistry)(nil).Drain), ctx, tenantID)
+}
+
 // Get mocks base method.
 func (m *MockTenantRegistry) Get(ctx context.Context, tenantID string) (tokens.TokenManager, error) {
 	m.ctrl.T.Helper()
@@ -54,4 +83,18 @@ func (m *MockTenantRegistry) Get(ctx context.Context, tenantID string) (tokens.T
 func (mr *MockTenantRegistryMockRecorder) Get(ctx, tenantID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockTenantRegistry)(nil).Get), ctx, tenantID)
+}
+
+// Remove mocks base method.
+func (m *MockTenantRegistry) Remove(ctx context.Context, tenantID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Remove", ctx, tenantID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Remove indicates an expected call of Remove.
+func (mr *MockTenantRegistryMockRecorder) Remove(ctx, tenantID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockTenantRegistry)(nil).Remove), ctx, tenantID)
 }
