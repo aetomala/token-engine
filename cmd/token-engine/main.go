@@ -107,21 +107,58 @@ func main() {
 	}
 
 	// ===== Tenant Registry =====
-	tenantReg, err := registry.NewStaticTenantRegistry(ctx, redisClient, cfg, promReg, logger, tracer, metrics)
-	if err != nil {
-		logger.Error(ctx, "failed to initialize tenant registry", "error", err)
+	tenantReg := registry.NewMultiTenantRegistry(redisClient, promReg, logger, tracer, metrics)
+	if err := tenantReg.Add(ctx, cfg.Issuer, registry.TenantConfig{
+		Issuer:   cfg.Issuer,
+		Audience: cfg.Audience,
+	}); err != nil {
+		logger.Error(ctx, "failed to add tenant", "error", err)
 		os.Exit(1)
 	}
-	km := tenantReg.KeyManager()
 
 	// ===== Authenticator =====
-	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
+	var auth interceptor.Authenticator
+	if cfg.TLSMode == "mtls" {
+		auth = interceptor.NewMTLSAuthenticator()
+	} else {
+		auth = interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
+	}
 
 	// ===== Stores =====
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
-	// ===== Registries =====
-	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{Version: 1}, logger)
+	// ===== Caller Registry =====
+	var callerReg registry.CallerRegistry
+	if cfg.CallerRegistryPath != "" {
+		callerCfg, err := registry.LoadCallerRegistryConfig(cfg.CallerRegistryPath)
+		if err != nil {
+			logger.Error(ctx, "failed to load caller registry", "error", err)
+			os.Exit(1)
+		}
+		if callerCfg.Version != 1 {
+			log.Printf("caller registry version must be 1, got %d", callerCfg.Version)
+			os.Exit(1)
+		}
+		seen := make(map[string]bool)
+		for _, entry := range callerCfg.Callers {
+			if entry.Identity == "" {
+				log.Printf("caller registry: entry with empty identity")
+				os.Exit(1)
+			}
+			if len(entry.PermittedTenants) == 0 {
+				log.Printf("caller registry: entry %q has no permitted_tenants", entry.Identity)
+				os.Exit(1)
+			}
+			if seen[entry.Identity] {
+				log.Printf("caller registry: duplicate identity %q", entry.Identity)
+				os.Exit(1)
+			}
+			seen[entry.Identity] = true
+		}
+		callerReg = registry.NewStaticCallerRegistry(callerCfg, logger)
+	} else {
+		callerReg = registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{Version: 1}, logger)
+	}
 
 	// ===== Audit and Reconciliation =====
 	auditStore := audit.NewSlogAuditStore(logger)
@@ -169,13 +206,15 @@ func main() {
 	// ===== HTTP Mux =====
 	checkers := []internalhealth.Checker{
 		internalhealth.NewRedisChecker(redisClient),
-		internalhealth.NewKeyAvailabilityChecker(km),
 		internalhealth.NewAuditChecker(auditStore),
+	}
+	for _, tenantKM := range tenantReg.AllKeyManagers() {
+		checkers = append(checkers, internalhealth.NewKeyAvailabilityChecker(tenantKM))
 	}
 	httpMux := http.NewServeMux()
 	httpMux.Handle("GET /healthz/live", internalhealth.NewLiveHandler())
 	httpMux.Handle("GET /healthz/ready", internalhealth.NewReadyHandler(checkers))
-	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(km, cfg))
+	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(tenantReg.AllKeyManagers()[cfg.Issuer], cfg))
 	httpMux.Handle("GET /metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	// ===== HTTP Server =====
@@ -236,9 +275,11 @@ func main() {
 		log.Printf("otel shutdown error: %v", err)
 	}
 
-	// 3. Stop key manager background goroutine.
-	if err := km.Shutdown(shutdownCtx); err != nil {
-		log.Printf("key manager shutdown error: %v", err)
+	// 3. Stop key manager background goroutines.
+	for tenantID, tenantKM := range tenantReg.AllKeyManagers() {
+		if err := tenantKM.Shutdown(shutdownCtx); err != nil {
+			log.Printf("key manager shutdown error for tenant %s: %v", tenantID, err)
+		}
 	}
 
 	// 4. Stop HTTP last — keeps health and metrics available through the gRPC drain.

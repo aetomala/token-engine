@@ -63,12 +63,16 @@ var _ = BeforeSuite(func() {
 	// ===== Prometheus registry =====
 	promReg := prometheus.NewRegistry()
 
-	// ===== StaticTenantRegistry — km.Start() generates RSA keys; allow 30s =====
+	// ===== MultiTenantRegistry — km stack generation takes up to 30s =====
 	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer initCancel()
-	tenantReg, err := registry.NewStaticTenantRegistry(initCtx, redisClient, cfg, promReg, logger, tracer, metrics)
-	Expect(err).NotTo(HaveOccurred())
-	km = tenantReg.KeyManager()
+	tenantReg := registry.NewMultiTenantRegistry(redisClient, promReg, logger, tracer, metrics)
+	Expect(tenantReg.Add(initCtx, cfg.Issuer, registry.TenantConfig{
+		Issuer:   cfg.Issuer,
+		Audience: cfg.Audience,
+	})).To(Succeed())
+	kms := tenantReg.AllKeyManagers()
+	km = kms[cfg.Issuer]
 
 	// ===== Idempotency store =====
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
