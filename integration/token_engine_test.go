@@ -344,6 +344,39 @@ var _ = Describe("TokenEngine", func() {
 		})
 	})
 
+	// ===== RevokeAllForUserAndAudience =====
+	Describe("RevokeAllForUserAndAudience", func() {
+		Context("after revoking all tokens for a user and audience", func() {
+			It("causes a subsequent RefreshToken call for that user to fail", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				issued, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-6",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := authCtx()
+				defer cancel2()
+				_, err = client.RevokeAllForUserAndAudience(ctx2, &tokenv1.RevokeUserAndAudienceRequest{
+					UserId:   "user-6",
+					Audience: "api",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx3, cancel3 := authCtx()
+				defer cancel3()
+				_, err = client.RefreshToken(ctx3, &tokenv1.RefreshTokenRequest{
+					RefreshToken: issued.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(status.Code(err)).NotTo(Equal(codes.OK))
+			})
+		})
+	})
+
 	// ===== Idempotency interceptor =====
 	Describe("Idempotency interceptor", func() {
 		Context("when the same x-idempotency-key is sent twice", func() {
