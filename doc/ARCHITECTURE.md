@@ -19,10 +19,10 @@ cmd/token-engine/main.go
 │   ├── Logger        (internal/observability — SlogLogger)
 │   ├── Metrics       (internal/observability — PrometheusMetrics)
 │   └── Tracer        (internal/observability — OtelTracer)
-├── Authenticator     (internal/interceptor — StaticKeyAuthenticator)
+├── Authenticator     (internal/interceptor — MTLSAuthenticator [mtls] / StaticKeyAuthenticator [disabled])
 ├── Registries
-│   ├── CallerRegistry  (internal/registry — StaticCallerRegistry)
-│   └── TenantRegistry  (internal/registry — StaticTenantRegistry)
+│   ├── CallerRegistry  (internal/registry — StaticCallerRegistry, YAML-backed, v0.5)
+│   └── TenantRegistry  (internal/registry — MultiTenantRegistry, v0.5)
 ├── Stores
 │   └── IdempotencyStore (internal/store — RedisIdempotencyStore, v0.4)
 ├── Audit             (internal/audit — SlogAuditStore, v0.3)
@@ -79,7 +79,7 @@ OTel interceptor        — extracts/creates trace context; starts server span
 Correlation interceptor — generates UUID; stores in context; logs to all downstream log lines
   │
   ▼
-Auth interceptor        — reads Authorization header; looks up API key in StaticKeyAuthenticator
+Auth interceptor        — reads TLS peer CN [mtls] or x-api-key header [disabled]; sets caller identity in context
   │  ← UNAUTHENTICATED if key missing or unrecognized
   ▼
 CallerAuthz interceptor — checks caller identity against tenant's allowed callers list
@@ -151,10 +151,10 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 | Component | Interface | Current Implementation | Status |
 |---|---|---|---|
 | Audit logging | `audit.AuditStore` | `SlogAuditStore` (structured log sink) | Live — v0.3 |
-| Token reconciliation | `reconciliation.TokenReconciler` | `NoOpReconciler` | Deferred — v0.5+ |
-| Dynamic tenant registry | `registry.TenantRegistry` | `StaticTenantRegistry` (static config, real `tokens.TokenManager`) | Static — Redis backend deferred to v0.5 |
+| Token reconciliation | `reconciliation.TokenReconciler` | `NoOpReconciler` | Deferred — v0.6 |
+| Dynamic tenant registry | `registry.TenantRegistry` | `MultiTenantRegistry` | Live — v0.5 |
 | Idempotency store | `store.IdempotencyStore` | `RedisIdempotencyStore` (24h TTL default) | Live — v0.4 |
-| Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` | Deferred — v1.0 |
+| Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` (YAML-backed) | Live — v0.5 |
 
 ---
 
@@ -203,8 +203,8 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
 | v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, `SlogAuditStore`, jwtauth v0.7.1 (`tokens.TokenManager` interface) |
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor (promoted from NoOp), 24h TTL default, shutdown hardening (OTel flush, gRPC 10s drain, HTTP timeouts), end-to-end integration test suite |
-| v0.5 | Planned | mTLS authenticator, static YAML caller registry, full multi-tenant `TenantRegistry` with drain/remove lifecycle |
-| v1.0 | Planned | Distributed locks for key rotation + reconciliation, cursor-based reconciler, Kubernetes manifests, operator runbook |
+| v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC + handler; `MTLSAuthenticator`; static YAML caller registry (`CallerRegistryConfig`, `LoadCallerRegistryConfig`); `MultiTenantRegistry` with `Add`/`Drain`/`Remove` + per-tenant namespace isolation; mTLS gRPC server credentials (TLS 1.3 min); `deploy/caller-registry.yaml`; integration suite at 12 specs |
+| v0.6 | Planned | Per-operation distributed locks (key rotation + reconciliation); cursor-based `Reconciler` replacing `NoOpReconciler` (ADR-011); JWKS key count metric; `RefreshToken` idempotency promoted; Kubernetes manifests + startup probe co-designed with key rotation interval; `govulncheck` + `golangci-lint` with `revive`/`godot` enforced in CI; operator runbook |
 
 ---
 
@@ -218,3 +218,4 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | [ADR-004](adr/ADR-004-noop-stubs-v01.md) | NoOp stubs for audit, reconciliation, and tenant registry in v0.1 |
 | [ADR-005](adr/ADR-005-in-memory-idempotency-v01.md) | In-memory idempotency store for v0.1 |
 | [ADR-006](adr/ADR-006-interceptor-chain-order.md) | Interceptor chain ordering rationale |
+| [ADR-011](adr/ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Planned — v0.6 |

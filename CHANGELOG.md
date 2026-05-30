@@ -9,6 +9,39 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (v0.5.0)
+
+- `RevokeAllForUserAndAudience` RPC — revokes all refresh tokens for a user within a specific
+  audience; audit-gated (returns `codes.Unavailable` if audit store unreachable)
+- `MTLSAuthenticator` — extracts caller identity from TLS peer certificate Common Name;
+  selected when `TOKEN_ENGINE_TLS_MODE=mtls`
+- mTLS gRPC server credentials — loads cert/key/CA from filesystem; enforces
+  `RequireAndVerifyClientCert` with TLS 1.3 minimum; wired in `main.go`
+- Static YAML caller registry — `CallerRegistryConfig` / `LoadCallerRegistryConfig` decode
+  `caller-registry.yaml`; `StaticCallerRegistry.IsPermitted` promoted from stub to real
+  implementation; `TOKEN_ENGINE_CALLER_REGISTRY_PATH` config field
+- `MultiTenantRegistry` — replaces `StaticTenantRegistry`; supports dynamic `Add`/`Drain`/`Remove`
+  with per-tenant `KeyManager` + `RefreshStore` namespace isolation
+- `deploy/caller-registry.yaml` — example caller authorization config with format documentation
+- Integration test suite extended to 12 specs — added `RevokeAllForUserAndAudience` end-to-end
+  test covering revoke → subsequent refresh fails
+
+### Changed
+
+- `StaticTenantRegistry` removed — `MultiTenantRegistry` is now the sole `TenantRegistry`
+  implementation; `main.go` wires `Add` on startup, iterates `AllKeyManagers()` for health
+  checkers, JWKS handler, and graceful shutdown
+- Authenticator selection is now conditional on `TOKEN_ENGINE_TLS_MODE` — `MTLSAuthenticator`
+  for `mtls`, `StaticKeyAuthenticator` for `disabled`
+
+### Version Deferrals (v0.6)
+
+- Token reconciliation — `NoOpReconciler` remains; cursor-based implementation deferred to v0.6
+- `RefreshToken` idempotency — deferred to v0.6 (requires refresh token rotation + idempotency
+  store interaction to be safe)
+- Distributed locks — deferred to v0.6 (single-replica deployment required until then)
+- Kubernetes manifests — deferred to v0.6
+
 ---
 
 ## [v0.4.0] — 2026-05-29
