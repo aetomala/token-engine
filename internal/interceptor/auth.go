@@ -6,7 +6,9 @@ import (
 	"github.com/aetomala/token-engine/internal/observability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -18,6 +20,44 @@ type Authenticator interface {
 	// Returns the caller identity string on success.
 	// Returns a gRPC status error directly — callers must not wrap the error.
 	Authenticate(ctx context.Context) (callerIdentity string, err error)
+}
+
+// ===== MTLSAuthenticator =====
+
+// MTLSAuthenticator authenticates requests using the TLS peer certificate Common Name.
+// The gRPC server is configured with tls.RequireAndVerifyClientCert — the certificate
+// has already been cryptographically verified before Authenticate is called.
+// MTLSAuthenticator only extracts identity; it does not perform certificate verification.
+// All methods are safe for concurrent use.
+type MTLSAuthenticator struct{}
+
+var _ Authenticator = (*MTLSAuthenticator)(nil)
+
+// NewMTLSAuthenticator returns a new MTLSAuthenticator.
+func NewMTLSAuthenticator() *MTLSAuthenticator {
+	return &MTLSAuthenticator{}
+}
+
+// Authenticate extracts the caller identity from the TLS peer certificate Common Name.
+// Returns codes.Unauthenticated if: no peer in context, peer has no TLS credentials,
+// peer has no certificates, or the leaf certificate has an empty Common Name.
+func (a *MTLSAuthenticator) Authenticate(ctx context.Context) (string, error) {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return "", status.Error(codes.Unauthenticated, "no peer information in context")
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return "", status.Error(codes.Unauthenticated, "no TLS credentials in peer")
+	}
+	if len(tlsInfo.State.PeerCertificates) == 0 {
+		return "", status.Error(codes.Unauthenticated, "no client certificates provided")
+	}
+	cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName
+	if cn == "" {
+		return "", status.Error(codes.Unauthenticated, "client certificate Common Name is empty")
+	}
+	return cn, nil
 }
 
 // ===== StaticKeyAuthenticator =====
