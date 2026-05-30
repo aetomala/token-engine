@@ -121,7 +121,7 @@ func main() {
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
 
 	// ===== Registries =====
-	callerReg := registry.NewStaticCallerRegistry(logger)
+	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{Version: 1}, logger)
 
 	// ===== Audit and Reconciliation =====
 	auditStore := audit.NewSlogAuditStore(logger)

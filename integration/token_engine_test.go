@@ -75,7 +75,14 @@ var _ = BeforeSuite(func() {
 
 	// ===== Interceptors (same order as main.go, otelgrpc skipped — noop OTel not needed) =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
-	callerReg := registry.NewStaticCallerRegistry(logger)
+	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
+		Version: 1,
+		Callers: []registry.CallerEntry{
+			// test-caller is permitted for test-issuer (normal flow) and unknown-tenant
+			// (so the "unknown tenant" integration test reaches the registry and gets NotFound).
+			{Identity: "test-caller", PermittedTenants: []string{"test-issuer", "unknown-tenant"}},
+		},
+	}, logger)
 
 	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)

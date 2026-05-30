@@ -20,9 +20,10 @@ import (
 // This guard applies to: RevokeToken, RevokeAllForAudience, RevokeAllUserTokens.
 
 const (
-	spanNameRevokeToken          = "RevokeToken"
-	spanNameRevokeAllForAudience = "RevokeAllForAudience"
-	spanNameRevokeAllUserTokens  = "RevokeAllUserTokens"
+	spanNameRevokeToken                    = "RevokeToken"
+	spanNameRevokeAllForAudience           = "RevokeAllForAudience"
+	spanNameRevokeAllUserTokens            = "RevokeAllUserTokens"
+	spanNameRevokeAllForUserAndAudience    = "RevokeAllForUserAndAudience"
 )
 
 // TokenHandler implements the TokenEngine gRPC service.
@@ -298,6 +299,54 @@ func (h *TokenHandler) RevokeAllUserTokens(ctx context.Context, req *tokenv1.Rev
 		return nil, status.Error(codes.Internal, "audit record failed")
 	}
 
+	span.SetStatus(observability.StatusOK, "")
+	return &tokenv1.RevokeTokenResponse{}, nil
+}
+
+// RevokeAllForUserAndAudience revokes all tokens for the given user and audience combination.
+// Gated on audit store availability — returns codes.Unavailable if audit store is unreachable.
+func (h *TokenHandler) RevokeAllForUserAndAudience(ctx context.Context, req *tokenv1.RevokeUserAndAudienceRequest) (*tokenv1.RevokeTokenResponse, error) {
+	// ===== STEP 1: Audit gate =====
+	if err := h.auditStore.Ping(ctx); err != nil {
+		h.logger.Warn(ctx, "audit store unavailable", "error", err)
+		return nil, status.Error(codes.Unavailable, "audit store unavailable")
+	}
+
+	// ===== STEP 2: Open span =====
+	ctx, span := h.tracer.Start(ctx, spanNameRevokeAllForUserAndAudience)
+	defer span.End()
+
+	// ===== STEP 3: Resolve tenant =====
+	tenantID := req.TenantId
+	manager, err := h.registry.Get(ctx, tenantID)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, err
+	}
+
+	// ===== STEP 4: Revoke =====
+	if err := manager.RevokeAllForUserAndAudience(ctx, req.UserId, req.Audience); err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 5: Record audit event =====
+	event := audit.RevocationEvent{
+		TenantID: tenantID,
+		Target:   req.UserId,
+		Scope:    audit.RevocationScopeUser,
+	}
+	if err := h.auditStore.RecordRevocation(ctx, event); err != nil {
+		h.logger.Error(ctx, "failed to record revocation audit", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "audit record failed")
+	}
+
+	// ===== STEP 6: Success =====
 	span.SetStatus(observability.StatusOK, "")
 	return &tokenv1.RevokeTokenResponse{}, nil
 }

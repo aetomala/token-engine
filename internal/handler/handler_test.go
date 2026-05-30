@@ -887,6 +887,105 @@ Describe("Phase 3: RevokeAllUserTokens", func() {
 		})
 	})
 })
+// ===== PHASE 3: RevokeAllForUserAndAudience =====
+Describe("Phase 3: RevokeAllForUserAndAudience handler", func() {
+	var (
+		ctx            context.Context
+		cancel         context.CancelFunc
+		ctrl           *gomock.Controller
+		mockReg        *testutil.MockTenantRegistry
+		mockAuditStore *testutil.MockStore
+		mockTM         *testutil.MockTokenManager
+		h              *handler.TokenHandler
+		req            *tokenv1.RevokeUserAndAudienceRequest
+	)
+
+	BeforeEach(func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		ctrl = gomock.NewController(GinkgoT())
+		mockReg = testutil.NewMockTenantRegistry(ctrl)
+		mockAuditStore = testutil.NewMockStore(ctrl)
+		mockTM = testutil.NewMockTokenManager(ctrl)
+		h = handler.NewTokenHandler(mockReg, mockAuditStore, obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
+		req = &tokenv1.RevokeUserAndAudienceRequest{TenantId: "tenant-1", UserId: "user-1", Audience: "api"}
+	})
+
+	AfterEach(func() {
+		cancel()
+		ctrl.Finish()
+	})
+
+	Context("when audit store is available and revocation succeeds", func() {
+		It("calls manager.RevokeAllForUserAndAudience with userId and audience", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+
+			_, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("writes an audit log entry", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
+				e, ok := v.(audit.RevocationEvent)
+				return ok && e.Scope == audit.RevocationScopeUser && e.Target == req.UserId
+			})).Return(nil)
+
+			_, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("returns RevokeTokenResponse{} and nil error", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Return(nil)
+
+			resp, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(err).To(BeNil())
+			Expect(resp).To(Equal(&tokenv1.RevokeTokenResponse{}))
+		})
+	})
+
+	Context("when audit store is unavailable", func() {
+		It("returns codes.Unavailable without calling the Manager", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(errors.New("store unavailable"))
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			resp, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(status.Code(err)).To(Equal(codes.Unavailable))
+		})
+	})
+
+	Context("when manager.RevokeAllForUserAndAudience returns an error", func() {
+		It("returns a mapped gRPC status error", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(errors.New("revoke failed"))
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).Times(0)
+
+			resp, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(err).NotTo(BeNil())
+		})
+	})
+
+	Context("when tenantID is unknown", func() {
+		It("returns codes.NotFound", func() {
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(nil, status.Error(codes.NotFound, "tenant not found"))
+
+			resp, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(resp).To(BeNil())
+			Expect(status.Code(err)).To(Equal(codes.NotFound))
+		})
+	})
+})
 }) // TokenHandler
 
 var _ = Describe("JWKSHandler", func() {
