@@ -9,7 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added (v0.5.0)
+---
+
+## [v0.5.0] — 2026-05-30
+
+### Added
 
 - `RevokeAllForUserAndAudience` RPC — revokes all refresh tokens for a user within a specific
   audience; audit-gated (returns `codes.Unavailable` if audit store unreachable)
