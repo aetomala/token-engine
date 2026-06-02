@@ -44,6 +44,7 @@ type TenantConfig struct {
 
 // ===== Constants =====
 
+// Redis startup retry timing constants used during service initialisation.
 const (
 	RedisStartupRetryInterval = 2 * time.Second
 	RedisStartupRetryMaxWait  = 30 * time.Second

@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Checker name constants used in readiness response JSON.
 const (
 	CheckerNameRedis           = "redis"
 	CheckerNameKeyAvailability = "key_availability"
@@ -121,7 +122,7 @@ type AuditChecker struct {
 // Compile-time assertion — place immediately after struct declaration.
 var _ Checker = (*AuditChecker)(nil)
 
-// NewAuditChecker constructs an AuditChecker. store must not be nil.
+// NewAuditChecker constructs an AuditChecker. Store must not be nil.
 func NewAuditChecker(store audit.Store) *AuditChecker {
 	return &AuditChecker{store: store}
 }

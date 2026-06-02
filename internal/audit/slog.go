@@ -28,7 +28,7 @@ type SlogAuditStore struct {
 var _ Store = (*SlogAuditStore)(nil)
 
 // NewSlogAuditStore constructs a SlogAuditStore that writes audit records
-// via logger. logger must not be nil.
+// via logger. Logger must not be nil.
 func NewSlogAuditStore(logger observability.Logger) *SlogAuditStore {
 	return &SlogAuditStore{logger: logger}
 }

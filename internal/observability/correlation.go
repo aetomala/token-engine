@@ -23,6 +23,7 @@ type CallerIdentityKey struct{}
 
 // ===== Metadata Key Constants =====
 
+// gRPC metadata key constants used for correlation, auth, and idempotency.
 const (
 	MetadataKeyCorrelationID  = "x-correlation-id"
 	MetadataKeyAPIKey         = "x-api-key"
