@@ -13,9 +13,9 @@ import (
 // Unexported constants — NOT in internal/config.
 const (
 	jwksCacheControlHeader = "Cache-Control"
-	// NOT: "cache-control" — net/http canonicalizes header names
+	// NOT: "cache-control" — net/http canonicalizes header names.
 	jwksContentTypeJSON = "application/json"
-	// NOT: "application/json; charset=utf-8" — JWKS consumers expect bare media type
+	// NOT: "application/json; charset=utf-8" — JWKS consumers expect bare media type.
 )
 
 // JWKSHandler returns an http.HandlerFunc that serves the JWKS endpoint.

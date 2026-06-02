@@ -12,7 +12,7 @@ import (
 )
 
 // TenantAwareRequest is satisfied by all proto request messages containing a tenant_id field.
-// proto-gen-go generates GetTenantId() string for every proto3 message with a string tenant_id field.
+// Proto-gen-go generates GetTenantId() string for every proto3 message with a string tenant_id field.
 // Used by the caller interceptor to extract tenant_id without type-asserting each request type individually.
 type TenantAwareRequest interface {
 	GetTenantId() string

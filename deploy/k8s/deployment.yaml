@@ -1,0 +1,52 @@
+# Single replica required until distributed locks are validated in production (v0.6).
+# Increase replicas only after confirming lock acquisition under concurrent rotation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: token-engine
+  template:
+    metadata:
+      labels:
+        app: token-engine
+    spec:
+      containers:
+        - name: token-engine
+          image: token-engine:latest
+          ports:
+            - containerPort: 9090
+            - containerPort: 8080
+          env:
+            - name: TOKEN_ENGINE_ISSUER
+              value: ""
+            - name: TOKEN_ENGINE_AUDIENCE
+              value: ""
+            - name: TOKEN_ENGINE_REDIS_ADDR
+              value: ""
+            - name: TOKEN_ENGINE_TLS_MODE
+              value: "disabled"
+            - name: TOKEN_ENGINE_LOCK_TTL
+              value: "30s"
+            - name: TOKEN_ENGINE_RECONCILIATION_INTERVAL
+              value: "5m"
+            - name: TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE
+              value: "100"
+            - name: TOKEN_ENGINE_ROTATION_WINDOW_GUARD
+              value: "1m"
+          startupProbe:
+            httpGet:
+              path: /.well-known/jwks.json
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

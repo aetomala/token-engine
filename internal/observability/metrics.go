@@ -21,6 +21,7 @@ type Metrics interface {
 
 // ===== Metric Name Constants =====
 
+// Prometheus metric name constants for all service instrumentation.
 const (
 	MetricGRPCRequests     = "token_engine_grpc_requests_total"
 	MetricGRPCDuration     = "token_engine_grpc_request_duration_seconds"
@@ -151,27 +152,32 @@ type LibraryPrometheusMetrics struct {
 var _ librarymetrics.Metrics = (*LibraryPrometheusMetrics)(nil)
 
 // NewLibraryPrometheusMetrics returns a LibraryPrometheusMetrics delegating all
-// calls to inner. inner must not be nil.
+// calls to inner. Inner must not be nil.
 func NewLibraryPrometheusMetrics(inner Metrics) *LibraryPrometheusMetrics {
 	return &LibraryPrometheusMetrics{inner: inner}
 }
 
+// IncrementCounter delegates to inner.
 func (a *LibraryPrometheusMetrics) IncrementCounter(name string, labels map[string]string) {
 	a.inner.IncrementCounter(name, labels)
 }
 
+// AddCounter delegates to inner.
 func (a *LibraryPrometheusMetrics) AddCounter(name string, value float64, labels map[string]string) {
 	a.inner.AddCounter(name, value, labels)
 }
 
+// SetGauge delegates to inner.
 func (a *LibraryPrometheusMetrics) SetGauge(name string, value float64, labels map[string]string) {
 	a.inner.SetGauge(name, value, labels)
 }
 
+// RecordHistogram delegates to inner.
 func (a *LibraryPrometheusMetrics) RecordHistogram(name string, value float64, labels map[string]string) {
 	a.inner.RecordHistogram(name, value, labels)
 }
 
+// RecordDuration delegates to inner.
 func (a *LibraryPrometheusMetrics) RecordDuration(name string, d time.Duration, labels map[string]string) {
 	a.inner.RecordDuration(name, d, labels)
 }

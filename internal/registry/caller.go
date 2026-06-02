@@ -59,8 +59,8 @@ type StaticCallerRegistry struct {
 var _ CallerRegistry = (*StaticCallerRegistry)(nil)
 
 // NewStaticCallerRegistry constructs a StaticCallerRegistry from an already-loaded config.
-// cfg must not be nil. cfg must have been validated before this call.
-// logger is used for authorization decision logging.
+// Cfg must not be nil. Cfg must have been validated before this call.
+// Logger is used for authorization decision logging.
 func NewStaticCallerRegistry(cfg *CallerRegistryConfig, logger observability.Logger) *StaticCallerRegistry {
 	allowed := make(map[string]map[string]bool, len(cfg.Callers))
 	for _, entry := range cfg.Callers {

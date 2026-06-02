@@ -40,7 +40,7 @@ const (
 // where method is "IssueToken" or "RefreshToken".
 //
 // Response type for both methods: *tokenv1.TokenPair.
-// x-idempotency-key absent or empty: pass through without store interaction.
+// X-idempotency-key absent or empty: pass through without store interaction.
 func NewIdempotencyInterceptor(st store.IdempotencyStore, logger observability.Logger, metrics observability.Metrics) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// ===== STEP 1: Method guard =====
