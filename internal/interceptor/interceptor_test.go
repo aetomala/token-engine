@@ -223,7 +223,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 	// ===== PHASE 3: Core Operations =====
 	Describe("Phase 3: Core Operations", func() {
 
-		Context("when method is not IssueToken", func() {
+		Context("when method is not IssueToken or RefreshToken", func() {
 			It("calls the handler without checking the store", func() {
 				handlerCalled := false
 				handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
@@ -233,7 +233,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RefreshToken"}, handler)
+				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RevokeToken"}, handler)
 
 				Expect(handlerCalled).To(BeTrue())
 			})
@@ -244,7 +244,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				}
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any()).Times(0)
 
-				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RefreshToken"}, handler)
+				_, _ = sut(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RevokeToken"}, handler)
 			})
 		})
 
@@ -729,6 +729,122 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					return &tokenv1.TokenPair{}, nil
 				}
 				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+			})
+		})
+
+		Context("RefreshToken — promoted in v0.6", func() {
+			const refreshMethod = "/token.v1.TokenEngine/RefreshToken"
+
+			Context("when x-idempotency-key is absent", func() {
+				It("passes through to handler without checking the store", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "t1"}
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+					_, _ = sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(handlerCalled).To(BeTrue())
+				})
+			})
+
+			Context("when x-idempotency-key is present — cache miss", func() {
+				It("calls Get BEFORE handler, then SetNX after handler success", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+					expectedKey := "idempotency:tenant1:RefreshToken:refresh-key-1"
+
+					getOrder := 0
+					handlerOrder := 0
+					var getCallOrder int
+
+					mockStore.EXPECT().Get(gomock.Any(), expectedKey).DoAndReturn(
+						func(_ context.Context, _ string) ([]byte, bool, error) {
+							getCallOrder = getOrder
+							getOrder++
+							return nil, false, nil
+						})
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerOrder = getOrder
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(getCallOrder).To(Equal(0))
+					Expect(handlerOrder).To(Equal(1))
+				})
+			})
+
+			Context("when x-idempotency-key is present — cache hit", func() {
+				It("returns cached response without calling handler", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+					expectedKey := "idempotency:tenant1:RefreshToken:refresh-key-1"
+					cachedResp := &tokenv1.TokenPair{}
+					cachedBytes, _ := proto.Marshal(cachedResp)
+
+					mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(handlerCalled).To(BeFalse())
+				})
+			})
+
+			Context("when store Get returns error", func() {
+				It("logs Warn and calls handler (treat as miss)", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+
+					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, errors.New("redis down"))
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+					mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(handlerCalled).To(BeTrue())
+				})
+			})
+
+			Context("when handler returns error on miss", func() {
+				It("does not call SetNX", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+
+					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						return nil, errors.New("handler error")
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(err).To(HaveOccurred())
+				})
 			})
 		})
 

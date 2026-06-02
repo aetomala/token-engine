@@ -40,6 +40,10 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_TLS_KEY_FILE")
 		os.Unsetenv("TOKEN_ENGINE_TLS_CA_FILE")
 		os.Unsetenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH")
+		os.Unsetenv("TOKEN_ENGINE_LOCK_TTL")
+		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
+		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
+		os.Unsetenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
 	}
 
 	AfterEach(func() {
@@ -376,6 +380,170 @@ var _ = Describe("Config", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.CallerRegistryPath).To(Equal(""))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_LOCK_TTL set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_LOCK_TTL", "1m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.LockTTL).To(Equal(1 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_LOCK_TTL absent", func() {
+		It("uses default of 30s", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.LockTTL).To(Equal(30 * time.Second))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_LOCK_TTL parse failure", func() {
+		It("logs warning and uses default 30s", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_LOCK_TTL", "not-a-duration")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.LockTTL).To(Equal(30 * time.Second))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_INTERVAL set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL", "10m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationInterval).To(Equal(10 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_INTERVAL absent", func() {
+		It("uses default of 5m", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationInterval).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_INTERVAL parse failure", func() {
+		It("logs warning and uses default 5m", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL", "bad")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationInterval).To(Equal(5 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE set to valid integer", func() {
+		It("parses and stores the value", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "50")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationPageSize).To(Equal(50))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE absent", func() {
+		It("uses default of 100", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationPageSize).To(Equal(100))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse failure", func() {
+		It("logs warning and uses default 100", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "notanint")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReconciliationPageSize).To(Equal(100))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_ROTATION_WINDOW_GUARD set to valid duration", func() {
+		It("parses and stores the duration", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD", "2m")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.RotationWindowGuard).To(Equal(2 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_ROTATION_WINDOW_GUARD absent", func() {
+		It("uses default of 1m", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.RotationWindowGuard).To(Equal(1 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_ROTATION_WINDOW_GUARD parse failure", func() {
+		It("logs warning and uses default 1m", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD", "bad")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.RotationWindowGuard).To(Equal(1 * time.Minute))
 
 			cleanupEnvVars()
 		})

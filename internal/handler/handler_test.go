@@ -992,17 +992,19 @@ var _ = Describe("JWKSHandler", func() {
 // ===== PHASE 3: Core Operations =====
 Describe("Phase 3: Core Operations", func() {
 	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-		ctrl   *gomock.Controller
-		mockKM *testutil.MockKeyManager
-		testCfg *config.Config
+		ctx         context.Context
+		cancel      context.CancelFunc
+		ctrl        *gomock.Controller
+		mockKM      *testutil.MockKeyManager
+		mockMetrics *testutil.MockMetrics
+		testCfg     *config.Config
 	)
 
 	BeforeEach(func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		ctrl = gomock.NewController(GinkgoT())
 		mockKM = testutil.NewMockKeyManager(ctrl)
+		mockMetrics = testutil.NewMockMetrics(ctrl)
 		testCfg = &config.Config{JWKSCacheMaxAge: 5 * time.Minute}
 	})
 
@@ -1013,8 +1015,10 @@ Describe("Phase 3: Core Operations", func() {
 
 	Context("when km.GetJWKS returns an error", func() {
 		It("returns 503", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}, {}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(2), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1022,8 +1026,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}, {}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(2), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1031,8 +1037,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It(`writes body {"error":"key manager unavailable"}`, func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}, {}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(2), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1040,8 +1048,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("does not write Cache-Control header", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}, {}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(2), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(nil, errors.New("manager not running"))
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1051,8 +1061,10 @@ Describe("Phase 3: Core Operations", func() {
 
 	Context("when GetJWKS succeeds but key set is empty", func() {
 		It("returns 503", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1060,8 +1072,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1069,8 +1083,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It(`writes body {"error":"no signing keys available"}`, func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1078,8 +1094,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("does not write Cache-Control header", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1089,8 +1107,10 @@ Describe("Phase 3: Core Operations", func() {
 
 	Context("when GetJWKS succeeds with at least one key", func() {
 		It("returns 200", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1098,8 +1118,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("writes Content-Type: application/json", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1107,8 +1129,10 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("writes Cache-Control: public, max-age=N derived from cfg.JWKSCacheMaxAge", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
@@ -1116,12 +1140,51 @@ Describe("Phase 3: Core Operations", func() {
 		})
 
 		It("writes JSON-encoded JWKS body", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(1), gomock.Any())
 			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
-			handlerFn := handler.JWKSHandler(mockKM, testCfg)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
 			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 			handlerFn(w, req)
 			Expect(w.Body.String()).NotTo(BeEmpty())
+		})
+	})
+
+	Context("GetAllKeyInfo — key count metric (STEP 0)", func() {
+		It("calls SetGauge with count and tenant_id label when GetAllKeyInfo succeeds", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{{}, {}}, nil)
+			mockMetrics.EXPECT().SetGauge(
+				obs.MetricJWKSKeyCount,
+				float64(2),
+				map[string]string{"tenant_id": "tenant-a"},
+			)
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, "tenant-a", testCfg, mockMetrics)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			handlerFn(httptest.NewRecorder(), req)
+		})
+
+		It("does not call SetGauge when GetAllKeyInfo returns an error", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return(nil, errors.New("key store unavailable"))
+			mockMetrics.EXPECT().SetGauge(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("calls SetGauge with 0 when GetAllKeyInfo returns empty slice", func() {
+			mockKM.EXPECT().GetAllKeyInfo(gomock.Any()).Return([]keys.KeyInfo{}, nil)
+			mockMetrics.EXPECT().SetGauge(obs.MetricJWKSKeyCount, float64(0), gomock.Any())
+			mockKM.EXPECT().GetJWKS(gomock.Any()).Return(&keys.JWKS{Keys: []keys.JWK{{}}}, nil)
+			handlerFn := handler.JWKSHandler(mockKM, "test-tenant", testCfg, mockMetrics)
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+			handlerFn(w, req)
+			Expect(w.Code).To(Equal(http.StatusOK))
 		})
 	})
 	}) // Phase 3: Core Operations

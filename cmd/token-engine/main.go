@@ -245,7 +245,7 @@ func main() {
 	httpMux := http.NewServeMux()
 	httpMux.Handle("GET /healthz/live", internalhealth.NewLiveHandler())
 	httpMux.Handle("GET /healthz/ready", internalhealth.NewReadyHandler(checkers))
-	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(tenantReg.AllKeyManagers()[cfg.Issuer], cfg))
+	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(tenantReg.AllKeyManagers()[cfg.Issuer], cfg.Issuer, cfg, metrics))
 	httpMux.Handle("GET /metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	// ===== HTTP Server =====

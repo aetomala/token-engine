@@ -254,3 +254,19 @@ func (r *MultiTenantRegistry) AllKeyManagers() map[string]keys.KeyManager {
 	}
 	return result
 }
+
+// GetAll returns a snapshot of all non-draining tenant managers at call time.
+// Returns a map of tenantID → tokens.TokenManager.
+// CursorReconciler receives this map at construction and does not observe
+// tenants added or removed after construction.
+func (r *MultiTenantRegistry) GetAll() map[string]tokens.TokenManager {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string]tokens.TokenManager)
+	for id, entry := range r.tenants {
+		if !entry.draining {
+			result[id] = entry.manager
+		}
+	}
+	return result
+}

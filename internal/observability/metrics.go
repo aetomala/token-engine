@@ -27,6 +27,7 @@ const (
 	MetricIdempotencyTotal = "token_engine_idempotency_total"
 	MetricActiveTenants    = "token_engine_active_tenants"
 	MetricRegistryOps      = "token_engine_tenant_registry_operations_total"
+	MetricJWKSKeyCount     = "token_engine_jwks_key_count"
 )
 
 // ===== PrometheusMetrics =====
@@ -66,8 +67,13 @@ func NewPrometheusMetrics(reg *prometheus.Registry) *PrometheusMetrics {
 		Help: "Total number of tenant registry operations",
 	})
 
+	jwksKeyCount := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: MetricJWKSKeyCount,
+		Help: "Number of non-expired public keys available in the JWKS endpoint",
+	})
+
 	// ===== STEP 2: Register all metrics =====
-	reg.MustRegister(grpcReqs, grpcDur, idempotency, activeTenants, registryOps)
+	reg.MustRegister(grpcReqs, grpcDur, idempotency, activeTenants, registryOps, jwksKeyCount)
 
 	// ===== STEP 3: Build metric maps =====
 	return &PrometheusMetrics{
@@ -78,6 +84,7 @@ func NewPrometheusMetrics(reg *prometheus.Registry) *PrometheusMetrics {
 		},
 		gauges: map[string]prometheus.Gauge{
 			MetricActiveTenants: activeTenants,
+			MetricJWKSKeyCount:  jwksKeyCount,
 		},
 		histograms: map[string]prometheus.Histogram{
 			MetricGRPCDuration: grpcDur,
