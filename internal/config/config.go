@@ -107,6 +107,26 @@ type Config struct {
 	// env: TOKEN_ENGINE_JWKS_CACHE_MAX_AGE; default: 5 * time.Minute
 	// parse failure — log warning, use default
 	JWKSCacheMaxAge time.Duration
+
+	// LockTTL is the TTL for all distributed lock keys.
+	// env: TOKEN_ENGINE_LOCK_TTL; default: 30 * time.Second
+	// parse failure — log warning, use default
+	LockTTL time.Duration
+
+	// ReconciliationInterval is the time between reconciliation passes.
+	// env: TOKEN_ENGINE_RECONCILIATION_INTERVAL; default: 5 * time.Minute
+	// parse failure — log warning, use default
+	ReconciliationInterval time.Duration
+
+	// ReconciliationPageSize is the number of tokens fetched per ListTokens page.
+	// env: TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE; default: 100
+	// parse failure — log warning, use default
+	ReconciliationPageSize int
+
+	// RotationWindowGuard is the minimum time since last key generation before a new key is generated.
+	// env: TOKEN_ENGINE_ROTATION_WINDOW_GUARD; default: 1 * time.Minute
+	// parse failure — log warning, use default
+	RotationWindowGuard time.Duration
 }
 
 // Load reads environment variables and validates them into a *Config.
@@ -135,6 +155,10 @@ func Load() (*Config, error) {
 	redisPasswordEnv := os.Getenv("TOKEN_ENGINE_REDIS_PASSWORD")
 	redisDBEnv := os.Getenv("TOKEN_ENGINE_REDIS_DB")
 	jwksCacheMaxAgeEnv := os.Getenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
+	lockTTLEnv := os.Getenv("TOKEN_ENGINE_LOCK_TTL")
+	reconciliationIntervalEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
+	reconciliationPageSizeEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
+	rotationWindowGuardEnv := os.Getenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
 
 	// ===== STEP 2: Fatal validations (before any defaults) =====
 
@@ -282,6 +306,45 @@ func Load() (*Config, error) {
 		}
 	}
 
+	defaultLockTTL := 30 * time.Second
+	if lockTTLEnv == "" {
+		c.LockTTL = defaultLockTTL
+	} else {
+		duration, err := time.ParseDuration(lockTTLEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_LOCK_TTL parse error: %v; using default %v", err, defaultLockTTL)
+			c.LockTTL = defaultLockTTL
+		} else {
+			c.LockTTL = duration
+		}
+	}
+
+	defaultReconciliationInterval := 5 * time.Minute
+	if reconciliationIntervalEnv == "" {
+		c.ReconciliationInterval = defaultReconciliationInterval
+	} else {
+		duration, err := time.ParseDuration(reconciliationIntervalEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_RECONCILIATION_INTERVAL parse error: %v; using default %v", err, defaultReconciliationInterval)
+			c.ReconciliationInterval = defaultReconciliationInterval
+		} else {
+			c.ReconciliationInterval = duration
+		}
+	}
+
+	defaultRotationWindowGuard := 1 * time.Minute
+	if rotationWindowGuardEnv == "" {
+		c.RotationWindowGuard = defaultRotationWindowGuard
+	} else {
+		duration, err := time.ParseDuration(rotationWindowGuardEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_ROTATION_WINDOW_GUARD parse error: %v; using default %v", err, defaultRotationWindowGuard)
+			c.RotationWindowGuard = defaultRotationWindowGuard
+		} else {
+			c.RotationWindowGuard = duration
+		}
+	}
+
 	// ===== STEP 5: Parse integer fields (with warnings on failure) =====
 	if redisDBEnv == "" {
 		c.RedisDB = 0
@@ -292,6 +355,18 @@ func Load() (*Config, error) {
 			c.RedisDB = 0
 		} else {
 			c.RedisDB = db
+		}
+	}
+
+	if reconciliationPageSizeEnv == "" {
+		c.ReconciliationPageSize = 100
+	} else {
+		pageSize, err := strconv.Atoi(reconciliationPageSizeEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse error: %v; using default 100", err)
+			c.ReconciliationPageSize = 100
+		} else {
+			c.ReconciliationPageSize = pageSize
 		}
 	}
 
