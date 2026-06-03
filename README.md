@@ -244,7 +244,7 @@ make ci
 Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
 
 ```bash
-docker pull docker.io/angeltomala/token-engine:v0.4.0
+docker pull docker.io/angeltomala/token-engine:v0.6.0
 ```
 
 See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
@@ -268,7 +268,7 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, JWKS endpoint, `SlogAuditStore`, CD pipeline |
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
 | v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC; `MTLSAuthenticator`; static YAML caller registry; `MultiTenantRegistry` with `Add`/`Drain`/`Remove`; mTLS gRPC server credentials (TLS 1.3 min) |
-| v0.6 | Planned | Distributed locks, cursor-based reconciler, Kubernetes manifests, `RefreshToken` idempotency, operator runbook |
+| v0.6 | ✅ Complete | Distributed lock package (`RedisLock`), `CursorReconciler` (cursor-based token reconciliation), `RefreshToken` idempotency, JWKS key count metric, Kubernetes manifests, operator + pre-upgrade runbooks, `govulncheck` + `revive`/`godot` enforced in CI |
 
 ---
 
