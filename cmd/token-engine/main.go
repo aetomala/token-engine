@@ -42,6 +42,11 @@ import (
 	"github.com/aetomala/token-engine/internal/store"
 )
 
+const (
+	lockKeyRotationPrefix       = "locks:key_rotation:"
+	rotationLastGeneratedPrefix = "key_rotation:last_generated:"
+)
+
 func main() {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
@@ -218,7 +223,7 @@ func main() {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					lastGenKey := "key_rotation:last_generated:" + tenantID
+					lastGenKey := rotationLastGeneratedPrefix + tenantID
 					val, _ := redisClient.Get(ctx, lastGenKey).Result()
 					if val != "" {
 						if t, err := time.Parse(time.RFC3339Nano, val); err == nil {
@@ -228,7 +233,7 @@ func main() {
 							}
 						}
 					}
-					lk, err := locker.Acquire(ctx, "locks:key_rotation:"+tenantID, cfg.LockTTL)
+					lk, err := locker.Acquire(ctx, lockKeyRotationPrefix+tenantID, cfg.LockTTL)
 					if err != nil {
 						logger.Info(ctx, "key rotation skipped: lock not acquired", "tenant_id", tenantID)
 						continue
