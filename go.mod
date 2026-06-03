@@ -1,9 +1,9 @@
 module github.com/aetomala/token-engine
 
-go 1.26.3
+go 1.26.4
 
 require (
-	github.com/aetomala/jwtauth v0.7.1
+	github.com/aetomala/jwtauth v0.7.2
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -19,6 +19,7 @@ require (
 	go.uber.org/mock v0.6.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -52,5 +53,4 @@ require (
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

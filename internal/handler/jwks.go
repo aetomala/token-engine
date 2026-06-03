@@ -7,17 +7,22 @@ import (
 
 	"github.com/aetomala/jwtauth/pkg/keys"
 	"github.com/aetomala/token-engine/internal/config"
+	"github.com/aetomala/token-engine/internal/observability"
 )
 
 // Unexported constants — NOT in internal/config.
 const (
 	jwksCacheControlHeader = "Cache-Control"
-	// NOT: "cache-control" — net/http canonicalizes header names
+	// NOT: "cache-control" — net/http canonicalizes header names.
 	jwksContentTypeJSON = "application/json"
-	// NOT: "application/json; charset=utf-8" — JWKS consumers expect bare media type
+	// NOT: "application/json; charset=utf-8" — JWKS consumers expect bare media type.
 )
 
 // JWKSHandler returns an http.HandlerFunc that serves the JWKS endpoint.
+// On each request, GetAllKeyInfo is called to emit the JWKS key count gauge before
+// the JWKS fetch — labeled with tenantID. A GetAllKeyInfo error is non-fatal; the
+// handler proceeds to GetJWKS regardless without setting the gauge.
+//
 // Three response paths — in order:
 //  1. km.GetJWKS(ctx) returns error      → 503, body {"error":"key manager unavailable"}
 //  2. JWKS.Keys is empty                  → 503, body {"error":"no signing keys available"}
@@ -25,8 +30,14 @@ const (
 //
 // Cache-Control is written ONLY on the success path.
 // Content-Type: application/json is written on ALL three paths.
-func JWKSHandler(km keys.KeyManager, cfg *config.Config) http.HandlerFunc {
+func JWKSHandler(km keys.KeyManager, tenantID string, cfg *config.Config, metrics observability.Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// ===== STEP 0: Emit key count gauge =====
+		infos, keyInfoErr := km.GetAllKeyInfo(r.Context())
+		if keyInfoErr == nil {
+			metrics.SetGauge(observability.MetricJWKSKeyCount, float64(len(infos)), map[string]string{"tenant_id": tenantID})
+		}
+
 		// ===== STEP 1: Fetch JWKS =====
 		jwks, err := km.GetJWKS(r.Context())
 		if err != nil {

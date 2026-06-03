@@ -21,12 +21,14 @@ type Metrics interface {
 
 // ===== Metric Name Constants =====
 
+// Prometheus metric name constants for all service instrumentation.
 const (
 	MetricGRPCRequests     = "token_engine_grpc_requests_total"
 	MetricGRPCDuration     = "token_engine_grpc_request_duration_seconds"
 	MetricIdempotencyTotal = "token_engine_idempotency_total"
 	MetricActiveTenants    = "token_engine_active_tenants"
 	MetricRegistryOps      = "token_engine_tenant_registry_operations_total"
+	MetricJWKSKeyCount     = "token_engine_jwks_key_count"
 )
 
 // ===== PrometheusMetrics =====
@@ -66,8 +68,13 @@ func NewPrometheusMetrics(reg *prometheus.Registry) *PrometheusMetrics {
 		Help: "Total number of tenant registry operations",
 	})
 
+	jwksKeyCount := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: MetricJWKSKeyCount,
+		Help: "Number of non-expired public keys available in the JWKS endpoint",
+	})
+
 	// ===== STEP 2: Register all metrics =====
-	reg.MustRegister(grpcReqs, grpcDur, idempotency, activeTenants, registryOps)
+	reg.MustRegister(grpcReqs, grpcDur, idempotency, activeTenants, registryOps, jwksKeyCount)
 
 	// ===== STEP 3: Build metric maps =====
 	return &PrometheusMetrics{
@@ -78,6 +85,7 @@ func NewPrometheusMetrics(reg *prometheus.Registry) *PrometheusMetrics {
 		},
 		gauges: map[string]prometheus.Gauge{
 			MetricActiveTenants: activeTenants,
+			MetricJWKSKeyCount:  jwksKeyCount,
 		},
 		histograms: map[string]prometheus.Histogram{
 			MetricGRPCDuration: grpcDur,
@@ -144,27 +152,32 @@ type LibraryPrometheusMetrics struct {
 var _ librarymetrics.Metrics = (*LibraryPrometheusMetrics)(nil)
 
 // NewLibraryPrometheusMetrics returns a LibraryPrometheusMetrics delegating all
-// calls to inner. inner must not be nil.
+// calls to inner. Inner must not be nil.
 func NewLibraryPrometheusMetrics(inner Metrics) *LibraryPrometheusMetrics {
 	return &LibraryPrometheusMetrics{inner: inner}
 }
 
+// IncrementCounter delegates to inner.
 func (a *LibraryPrometheusMetrics) IncrementCounter(name string, labels map[string]string) {
 	a.inner.IncrementCounter(name, labels)
 }
 
+// AddCounter delegates to inner.
 func (a *LibraryPrometheusMetrics) AddCounter(name string, value float64, labels map[string]string) {
 	a.inner.AddCounter(name, value, labels)
 }
 
+// SetGauge delegates to inner.
 func (a *LibraryPrometheusMetrics) SetGauge(name string, value float64, labels map[string]string) {
 	a.inner.SetGauge(name, value, labels)
 }
 
+// RecordHistogram delegates to inner.
 func (a *LibraryPrometheusMetrics) RecordHistogram(name string, value float64, labels map[string]string) {
 	a.inner.RecordHistogram(name, value, labels)
 }
 
+// RecordDuration delegates to inner.
 func (a *LibraryPrometheusMetrics) RecordDuration(name string, d time.Duration, labels map[string]string) {
 	a.inner.RecordDuration(name, d, labels)
 }

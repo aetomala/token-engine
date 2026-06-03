@@ -35,14 +35,20 @@ import (
 	"github.com/aetomala/token-engine/internal/handler"
 	internalhealth "github.com/aetomala/token-engine/internal/health"
 	"github.com/aetomala/token-engine/internal/interceptor"
+	"github.com/aetomala/token-engine/internal/lock"
 	"github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/registry"
 	"github.com/aetomala/token-engine/internal/store"
 )
 
+const (
+	lockKeyRotationPrefix       = "locks:key_rotation:"
+	rotationLastGeneratedPrefix = "key_rotation:last_generated:"
+)
+
 func main() {
-	ctx := context.Background()
+	ctx, cancelCtx := context.WithCancel(context.Background())
 
 	// ===== Load Configuration =====
 	cfg, err := config.Load()
@@ -108,6 +114,8 @@ func main() {
 		}
 		time.Sleep(registry.RedisStartupRetryInterval)
 	}
+
+	locker := lock.NewRedisLocker(redisClient, logger)
 
 	// ===== Tenant Registry =====
 	tenantReg := registry.NewMultiTenantRegistry(redisClient, promReg, logger, tracer, metrics)
@@ -193,8 +201,68 @@ func main() {
 	// ===== Audit and Reconciliation =====
 	auditStore := audit.NewSlogAuditStore(logger)
 
-	reconciler := reconciliation.NewNoOpReconciler()
-	_ = reconciler
+	allManagers := tenantReg.GetAll()
+	reconciler := reconciliation.NewCursorReconciler(
+		allManagers,
+		locker,
+		redisClient,
+		logger,
+		metrics,
+		cfg.ReconciliationPageSize,
+		cfg.LockTTL,
+	)
+
+	// ===== Key Rotation Guard =====
+	for tenantID, km := range tenantReg.AllKeyManagers() {
+		tenantID, km := tenantID, km
+		go func() {
+			ticker := time.NewTicker(cfg.RotationWindowGuard)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					lastGenKey := rotationLastGeneratedPrefix + tenantID
+					val, _ := redisClient.Get(ctx, lastGenKey).Result()
+					if val != "" {
+						if t, err := time.Parse(time.RFC3339Nano, val); err == nil {
+							if time.Since(t) < cfg.RotationWindowGuard {
+								logger.Debug(ctx, "key rotation skipped: within guard window", "tenant_id", tenantID)
+								continue
+							}
+						}
+					}
+					lk, err := locker.Acquire(ctx, lockKeyRotationPrefix+tenantID, cfg.LockTTL)
+					if err != nil {
+						logger.Info(ctx, "key rotation skipped: lock not acquired", "tenant_id", tenantID)
+						continue
+					}
+					if err := km.RotateKeys(ctx); err != nil {
+						logger.Warn(ctx, "key rotation error", "tenant_id", tenantID, "error", err)
+						_ = lk.Release(ctx)
+						continue
+					}
+					_ = redisClient.Set(ctx, lastGenKey, time.Now().Format(time.RFC3339Nano), 0).Err()
+					_ = lk.Release(ctx)
+				}
+			}
+		}()
+	}
+
+	// ===== Reconciliation Runner =====
+	go func() {
+		ticker := time.NewTicker(cfg.ReconciliationInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = reconciler.Run(ctx)
+			}
+		}
+	}()
 
 	// ===== Interceptors =====
 	// Order: otelgrpc → correlation → auth → caller authorization → idempotency → validation
@@ -245,7 +313,7 @@ func main() {
 	httpMux := http.NewServeMux()
 	httpMux.Handle("GET /healthz/live", internalhealth.NewLiveHandler())
 	httpMux.Handle("GET /healthz/ready", internalhealth.NewReadyHandler(checkers))
-	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(tenantReg.AllKeyManagers()[cfg.Issuer], cfg))
+	httpMux.HandleFunc("GET /.well-known/jwks.json", handler.JWKSHandler(tenantReg.AllKeyManagers()[cfg.Issuer], cfg.Issuer, cfg, metrics))
 	httpMux.Handle("GET /metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	// ===== HTTP Server =====
@@ -282,6 +350,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
+	cancelCtx()
 
 	// ===== Graceful Shutdown =====
 	// 30 s total budget covers gRPC drain, OTel flush, key manager, and HTTP.

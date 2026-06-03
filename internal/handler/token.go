@@ -37,9 +37,9 @@ type TokenHandler struct {
 }
 
 // NewTokenHandler returns a new TokenHandler wired with the given dependencies.
-// v0.3: auditStore parameter added — second positional argument.
-// v0.2: NewTokenHandler(registry, logger, tracer, metrics) — 4 args.
-// v0.3: NewTokenHandler(registry, auditStore, logger, tracer, metrics) — 5 args.
+// V0.3: auditStore parameter added — second positional argument.
+// V0.2: NewTokenHandler(registry, logger, tracer, metrics) — 4 args.
+// V0.3: NewTokenHandler(registry, auditStore, logger, tracer, metrics) — 5 args.
 // All parameters are required and must not be nil.
 func NewTokenHandler(
 	registry   registry.TenantRegistry,
