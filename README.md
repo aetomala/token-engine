@@ -5,7 +5,7 @@
 [![Go 1.26+](https://img.shields.io/badge/go-1.26+-blue.svg)](https://go.dev/dl/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v0.7.1 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
+A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v1.0.0 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
 
 ---
 

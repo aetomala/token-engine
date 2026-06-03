@@ -94,6 +94,7 @@ func (r *MultiTenantRegistry) Add(ctx context.Context, tenantID string, cfg Tena
 	keyStore, err := keys.NewRedisKeyStore(keys.RedisKeyStoreConfig{
 		Client:    r.client,
 		KeyPrefix: tenantID,
+		Namespace: tenantID,
 		Logger:    observability.NewLibraryLoggerAdapter(r.logger),
 	})
 	if err != nil {
@@ -112,6 +113,7 @@ func (r *MultiTenantRegistry) Add(ctx context.Context, tenantID string, cfg Tena
 	refreshStore, err := storage.NewRedisRefreshStore(storage.RedisRefreshStoreConfig{
 		Client:    r.client,
 		KeyPrefix: tenantID,
+		Namespace: tenantID,
 		Logger:    observability.NewLibraryLoggerAdapter(r.logger),
 	})
 	if err != nil {

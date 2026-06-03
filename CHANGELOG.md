@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded jwtauth dependency from v0.7.2 to v1.0.0; wired `Namespace` field on `RedisKeyStoreConfig` and `RedisRefreshStoreConfig` for per-tenant observability label decoupling
+
 ---
 
 ## [v0.6.0] — 2026-06-03
