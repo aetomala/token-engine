@@ -1,6 +1,6 @@
 module github.com/aetomala/token-engine
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/aetomala/jwtauth v0.7.2
