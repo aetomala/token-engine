@@ -11,6 +11,46 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [v0.6.0] — 2026-06-03
+
+### Added
+
+- Distributed lock package (`internal/lock`) — `Locker`/`Lock` interfaces with `RedisLock`
+  implementation; SET NX PX acquisition with Lua CAS-delete release; guards key rotation and
+  reconciliation critical sections against concurrent multi-replica execution
+- `CursorReconciler` — cursor-based `Reconciler` replacing `NoOpReconciler`; polls
+  Redis-backed refresh token store in pages using a scan cursor; wired in `main.go` with
+  configurable interval and page size; resolves v0.5.0 deferral (see ADR-011)
+- `RefreshToken` idempotency — idempotency interceptor extended to deduplicate `RefreshToken`
+  requests using `IdempotencyStore`; pre-handler `Get()` ordering preserves atomicity; resolves
+  v0.5.0 deferral
+- JWKS key count metric — `token_engine_jwks_active_key_count` gauge emitted on every JWKS
+  request; `JWKSHandler` updated to accept tenant ID and metrics for per-tenant key tracking
+- Kubernetes deployment manifest — `deploy/k8s/deployment.yaml` with startup, liveness, and
+  readiness probes co-designed with key rotation interval
+- Operator runbook (`docs/operator-guide.md`) — covers startup, key rotation, reconciliation,
+  and observability procedures
+- Pre-upgrade runbook (`docs/pre-upgrade-runbook.md`) — covers pre-upgrade verification steps
+- 4 new config fields: `TOKEN_ENGINE_LOCK_TTL` (default 30s), `TOKEN_ENGINE_RECONCILIATION_INTERVAL`
+  (default 5m), `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` (default 100),
+  `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` (default 1m)
+
+### Changed
+
+- jwtauth upgraded v0.7.1 → v0.7.2 — `tokens.TokenManager` interface updated to 20 methods;
+  `MockTokenManager` regenerated
+- `govulncheck` added to CI — runs on every PR; blocks on known vulnerabilities in dependencies
+- `golangci-lint` configuration updated — `revive` and `godot` linters now enforced; exported
+  symbol comments and declaration-level punctuation validated across all packages
+- Key rotation Redis key prefixes extracted as named constants in `main.go`
+
+### Security
+
+- Go toolchain bumped 1.26.3 → 1.26.4 — addresses GO-2026-5039 and GO-2026-5037, surfaced
+  by the newly added `govulncheck` CI step
+
+---
+
 ## [v0.5.0] — 2026-05-30
 
 ### Added
