@@ -9,8 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [v0.7.0] — 2026-06-05
+
+### Added
+
+- Added `NoOpLocker` and `NoOpLock` to `internal/lock` — no-op implementations of the `Locker` and `Lock` interfaces for use in single-node deployments and unit tests that do not require distributed mutual exclusion
+
 ### Changed
 
+- Upgraded jwtauth dependency from v0.7.2 to v1.0.0; wired `Namespace` field on `RedisKeyStoreConfig` and `RedisRefreshStoreConfig` for per-tenant observability label decoupling
 - Updated ADR-003 status to Superseded; replaced stale Target Version note with an Outcome section documenting mTLS delivery in v0.5.0, coexistence with static key auth, and a forward reference to ADR-008
 - Corrected ADR-002 jwtauth pinned version (v0.7.0 → v0.7.2); updated ADR-004 with production implementation outcomes (SlogAuditStore, CursorReconciler, MultiTenantRegistry); rewrote ADR-005 to Superseded with RedisIdempotencyStore delivery, 24h TTL default, RefreshToken coverage, and pre-handler ordering invariant; corrected ADR-006 interceptor naming and idempotency scope; updated ADR README to reflect ADR-003 and ADR-005 Superseded status
 
