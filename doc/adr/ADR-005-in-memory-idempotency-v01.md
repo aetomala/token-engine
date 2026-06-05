@@ -1,6 +1,6 @@
 # ADR-005: In-Memory Idempotency Store for v0.1
 
-**Status:** Accepted  
+**Status:** Superseded — RedisIdempotencyStore delivered in v0.4.0  
 **Date:** 2026-05-26
 
 ## Context
@@ -13,23 +13,32 @@ Durable idempotency (surviving restarts, shared across replicas) requires Redis.
 
 In-memory idempotency store with configurable TTL (`TOKEN_ENGINE_IDEMPOTENCY_TTL`, default 5 minutes). The store is a `sync.Map` with a background goroutine that sweeps expired entries.
 
+This decision was superseded in v0.4.0 — see Outcome below.
+
 ## Rationale
 
 - **Request deduplication works within the TTL window.** The primary use case for idempotency is network retries — a caller retries within seconds of the original request. An in-memory store with a 5-minute TTL covers this case correctly.
-- **Interface seam.** The `IdempotencyStore` interface is defined. v0.2 replaces the in-memory implementation with a Redis-backed one. No other code changes.
-- **Acceptable limitation.** The in-memory store is per-process. In a multi-replica deployment, a retry routed to a different replica will not find the cached response and will issue a second token pair. This is documented as a known limitation.
+- **Interface seam.** The `IdempotencyStore` interface is defined. v0.4 replaces the in-memory implementation with a Redis-backed one. No other code changes.
+- **Acceptable limitation.** The in-memory store is per-process. In a multi-replica deployment, a retry routed to a different replica will not find the cached response and will issue a second token pair. This is documented as a known limitation for v0.1.
 
-## Limitations
+## Outcome
 
-- **Not durable.** Idempotency state is lost on process restart. A retry arriving after a restart will issue a new token pair.
-- **Not shared across replicas.** In a multi-replica deployment, sticky sessions or a Redis-backed store (v0.2) are required for cross-replica idempotency.
-- **Memory-bound.** High-volume deployments with large TTLs accumulate idempotency entries in memory until the sweep goroutine clears them.
+`RedisIdempotencyStore` replaced the in-memory store in v0.4.0. It is wired in `main.go` and
+provides durability and cross-replica consistency. The `TOKEN_ENGINE_IDEMPOTENCY_TTL` default is
+**24 hours** — not 5 minutes as stated in the original decision.
 
-## Target Version
+Idempotency coverage was extended to **`RefreshToken`** in v0.6.0 alongside the `IssueToken`
+coverage established in v0.1.
 
-v0.2 replaces the in-memory store with a Redis-backed implementation that provides durability and cross-replica consistency.
+**Pre-handler ordering invariant (security-relevant):** The idempotency cache check for
+`RefreshToken` must occur before the jwtauth library is called — not after. jwtauth immediately
+revokes the old refresh token on invocation. A post-handler cache check would lose the race: the
+old token is already rotated before the duplicate request can be identified. This invariant is
+enforced by the position of `IdempotencyInterceptor` in the chain — it runs before the handler,
+not after.
 
 ## References
 
 - [internal/store/idempotency.go](../../internal/store/idempotency.go)
+- [internal/store/idempotency_redis.go](../../internal/store/idempotency_redis.go)
 - [internal/interceptor/idempotency.go](../../internal/interceptor/idempotency.go)

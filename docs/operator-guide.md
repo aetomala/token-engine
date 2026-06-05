@@ -4,7 +4,7 @@
 
 Token Engine exposes two network interfaces:
 
-- **gRPC** on `:9090` — handles `IssueToken`, `RefreshToken`, `RevokeToken`, `RevokeAllForAudience`, and `IntrospectToken` RPCs.
+- **gRPC** on `:9090` — handles `IssueToken`, `RefreshToken`, `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens`, and `RevokeAllForUserAndAudience` RPCs.
 - **HTTP** on `:8080` — serves JWKS at `/.well-known/jwks.json`, health endpoints at `/healthz/live` and `/healthz/ready`, and Prometheus metrics at `/metrics`.
 
 Both listeners start simultaneously. The gRPC port is the primary RPC surface; the HTTP port is read-only and supports health probes and metric scraping. Startup probes should target the HTTP port to avoid gating readiness on gRPC listener availability.
