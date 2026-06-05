@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Consolidated `docs/` directory into `doc/` — moved `operator-guide.md` and `pre-upgrade-runbook.md` into `doc/`; `docs/` directory removed
+- Filed ADR-007 documenting `MultiTenantRegistry` design — `Add`/`Drain`/`Remove` lifecycle rationale, two-phase shutdown semantic, and per-tenant Redis key prefix and namespace isolation
 
 ---
 

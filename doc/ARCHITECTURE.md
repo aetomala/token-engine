@@ -152,7 +152,7 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 |---|---|---|---|
 | Audit logging | `audit.AuditStore` | `SlogAuditStore` (structured log sink) | Live — v0.3 |
 | Token reconciliation | `reconciliation.TokenReconciler` | `CursorReconciler` (cursor-based, Redis-backed) | Live — v0.6 |
-| Dynamic tenant registry | `registry.TenantRegistry` | `MultiTenantRegistry` | Live — v0.5 |
+| Dynamic tenant registry | `registry.TenantRegistry` | `MultiTenantRegistry` | Live — v0.5 — [ADR-007](adr/ADR-007-multi-tenant-registry.md) |
 | Idempotency store | `store.IdempotencyStore` | `RedisIdempotencyStore` (24h TTL default) | Live — v0.4 |
 | Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` (YAML-backed) | Live — v0.5 |
 
@@ -218,4 +218,5 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | [ADR-004](adr/ADR-004-noop-stubs-v01.md) | NoOp stubs for audit, reconciliation, and tenant registry in v0.1 |
 | [ADR-005](adr/ADR-005-in-memory-idempotency-v01.md) | In-memory idempotency store for v0.1 |
 | [ADR-006](adr/ADR-006-interceptor-chain-order.md) | Interceptor chain ordering rationale |
+| [ADR-007](adr/ADR-007-multi-tenant-registry.md) | MultiTenantRegistry Add/Drain/Remove lifecycle and per-tenant namespace isolation |
 | [ADR-011](adr/ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Complete — v0.6 |
