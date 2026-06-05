@@ -219,4 +219,5 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | [ADR-005](adr/ADR-005-in-memory-idempotency-v01.md) | In-memory idempotency store for v0.1 |
 | [ADR-006](adr/ADR-006-interceptor-chain-order.md) | Interceptor chain ordering rationale |
 | [ADR-007](adr/ADR-007-multi-tenant-registry.md) | MultiTenantRegistry Add/Drain/Remove lifecycle and per-tenant namespace isolation |
+| [ADR-008](adr/ADR-008-mtls-auth-model.md) | mTLS authentication model — CN-based caller identity, RequireAndVerifyClientCert, TLS 1.3 minimum |
 | [ADR-011](adr/ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Complete — v0.6 |

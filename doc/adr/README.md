@@ -9,4 +9,5 @@
 | [ADR-005](ADR-005-in-memory-idempotency-v01.md) | In-Memory Idempotency Store for v0.1 | Superseded | 2026-05-26 |
 | [ADR-006](ADR-006-interceptor-chain-order.md) | Interceptor Chain Order | Accepted | 2026-05-26 |
 | [ADR-007](ADR-007-multi-tenant-registry.md) | Multi-Tenant Registry Lifecycle | Complete — v0.5.0 | 2026-05-30 |
+| [ADR-008](ADR-008-mtls-auth-model.md) | mTLS Authentication Model and CN-Based Caller Identity | Complete — v0.5.0 | 2026-05-30 |
 | [ADR-011](ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Planned (v0.6) | — |
