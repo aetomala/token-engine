@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `docs/operator-guide.md` Architecture Overview to remove the non-existent `IntrospectToken` RPC and add the missing `RevokeAllUserTokens` and `RevokeAllForUserAndAudience` RPCs; the list now matches `proto/token_engine.proto` exactly
+
 ---
 
 ## [v0.6.0] — 2026-06-03
