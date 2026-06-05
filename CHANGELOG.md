@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added `NoOpLocker` and `NoOpLock` to `internal/lock` — no-op implementations of the `Locker` and `Lock` interfaces for use in single-node deployments and unit tests that do not require distributed mutual exclusion
+
 ### Changed
 
 - Upgraded jwtauth dependency from v0.7.2 to v1.0.0; wired `Namespace` field on `RedisKeyStoreConfig` and `RedisRefreshStoreConfig` for per-tenant observability label decoupling
