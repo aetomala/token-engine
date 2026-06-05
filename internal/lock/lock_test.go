@@ -148,4 +148,36 @@ var _ = Describe("Lock", func() {
 			})
 		})
 	})
+
+	// ===== PHASE 4: NoOpLocker =====
+	Describe("Phase 4: NoOpLocker", func() {
+		var noopLocker *NoOpLocker
+
+		BeforeEach(func() {
+			noopLocker = NewNoOpLocker()
+		})
+
+		It("returns a non-nil NoOpLocker from NewNoOpLocker", func() {
+			Expect(noopLocker).NotTo(BeNil())
+		})
+
+		It("returns a non-nil Lock and nil error from Acquire", func() {
+			lk, err := noopLocker.Acquire(ctx, "any-key", time.Second)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lk).NotTo(BeNil())
+		})
+
+		It("returns nil from Release", func() {
+			lk, err := noopLocker.Acquire(ctx, "any-key", time.Second)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lk.Release(ctx)).To(Succeed())
+		})
+
+		It("allows Release to be called multiple times (idempotent)", func() {
+			lk, err := noopLocker.Acquire(ctx, "any-key", time.Second)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lk.Release(ctx)).To(Succeed())
+			Expect(lk.Release(ctx)).To(Succeed())
+		})
+	})
 })
