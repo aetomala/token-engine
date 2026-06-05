@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Updated ADR-003 status to Superseded; replaced stale Target Version note with an Outcome section documenting mTLS delivery in v0.5.0, coexistence with static key auth, and a forward reference to ADR-008
+
 ### Fixed
 
 - Fixed `docs/operator-guide.md` Architecture Overview to remove the non-existent `IntrospectToken` RPC and add the missing `RevokeAllUserTokens` and `RevokeAllForUserAndAudience` RPCs; the list now matches `proto/token_engine.proto` exactly
