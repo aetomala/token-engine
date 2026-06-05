@@ -39,6 +39,18 @@ Define interfaces and NoOp implementations for all three components. Wire the No
 - No audit trail in v0.1 — token operations are not recorded anywhere beyond log lines.
 - No automatic cleanup of expired tokens in v0.1 — orphaned refresh tokens accumulate in the jwtauth `RefreshStore` until it is restarted or the store is manually cleared.
 
+## Outcome
+
+Two of the three NoOp stubs have been superseded by real implementations:
+
+- **`SlogAuditStore`** replaced `NoOpAuditStore` in v0.3.0 — writes structured log lines for
+  all revocation events and is wired in `main.go`. `NoOpAuditStore` remains available as a
+  test utility for components that need an `AuditStore` without a real logger.
+- **`CursorReconciler`** replaced `NoOpReconciler` in v0.6.0 — performs cursor-based
+  reconciliation of the Redis-backed refresh token store on a configurable interval and is
+  wired in `main.go`. `NoOpReconciler` remains available as a test utility.
+- **`MultiTenantRegistry`** replaced `StaticTenantRegistry` in v0.5.0.
+
 ## References
 
 - [internal/audit/store.go](../../internal/audit/store.go)

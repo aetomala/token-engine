@@ -1,6 +1,6 @@
 # ADR-003: Static Caller Keys for v0.1
 
-**Status:** Accepted  
+**Status:** Superseded — mTLS delivered in v0.5.0; see ADR-008  
 **Date:** 2026-05-26
 
 ## Context
@@ -33,12 +33,17 @@ Static API key → caller identity map for v0.1. Keys are configured via `TOKEN_
 - Key revocation is not immediate — the service must be restarted to revoke a key.
 - Static keys stored in environment variables require secrets management discipline at the deployment layer (Kubernetes Secrets, Vault agent injection, etc.).
 
-## Target Version
+## Outcome
 
-v0.2 will introduce a Redis-backed `CallerRegistry` that supports key rotation without restart and immediate revocation.
+mTLS authentication (`TLS_MODE=mtls`) was delivered in v0.5.0 via `MTLSAuthenticator`, which extracts caller identity from the TLS client certificate Common Name. The full mTLS design rationale is documented in ADR-008.
+
+Static key authentication remains the production path when `TLS_MODE=disabled`. The two modes are mutually exclusive at startup — `TLS_MODE` determines which `Authenticator` implementation is wired in `main.go`.
+
+The Redis-backed `CallerRegistry` referenced in the original Target Version note was not pursued — `StaticCallerRegistry` meets current requirements without the operational overhead of Redis key management.
 
 ## References
 
 - [internal/interceptor/auth.go](../../internal/interceptor/auth.go) — StaticKeyAuthenticator
 - [internal/registry/caller.go](../../internal/registry/caller.go) — StaticCallerRegistry
 - [ADR-006](ADR-006-interceptor-chain-order.md) — where in the chain authentication runs
+- [ADR-008](ADR-008-mtls-auth-model.md) — mTLS design rationale and CN-based identity model

@@ -37,7 +37,7 @@ token-engine contains no JWT signing code, no key management code, and no refres
 
 | Dependency | Pinned Version | Reason |
 |---|---|---|
-| `github.com/aetomala/jwtauth` | v0.7.0 | Sentinel package layout (v0.7.0 specific) |
+| `github.com/aetomala/jwtauth` | v0.7.2 | Sentinel package layout and TokenManager interface (v0.7.2 specific) |
 | `go.uber.org/mock` | v0.6.0 | Required by jwtauth v0.7.0 |
 | `go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc` | v0.52.0 | v0.60.0+ dropped `UnaryServerInterceptor`; incompatible with `ChainUnaryInterceptor` pattern |
 
