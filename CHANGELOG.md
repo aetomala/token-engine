@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated `docs/` directory into `doc/` — moved `operator-guide.md` and `pre-upgrade-runbook.md` into `doc/`; `docs/` directory removed
+
 ---
 
 ## [v0.7.0] — 2026-06-05
