@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [v0.7.0] — 2026-06-05
+
 ### Added
 
 - Added `NoOpLocker` and `NoOpLock` to `internal/lock` — no-op implementations of the `Locker` and `Lock` interfaces for use in single-node deployments and unit tests that do not require distributed mutual exclusion
