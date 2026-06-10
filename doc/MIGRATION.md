@@ -129,7 +129,7 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
   on every `TOKEN_ENGINE_RECONCILIATION_INTERVAL` tick.
 - `RefreshToken` idempotency now active (was pass-through in v0.1–v0.5).
 - Distributed locks guard key rotation and reconciliation — **single-replica constraint lifted**.
-- New metric: `token_engine_jwks_active_key_count` gauge emitted on every JWKS request.
+- New metric: `token_engine_jwks_key_count` gauge emitted on every JWKS request.
 
 ### Required actions
 
