@@ -174,6 +174,7 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 | `internal/audit` | `.../internal/audit` | Audit logging interface, NoOp, and SlogAuditStore |
 | `internal/reconciliation` | `.../internal/reconciliation` | Token reconciliation interface and NoOp |
 | `internal/testutil` | `.../internal/testutil` | Generated mocks for all interfaces |
+| `client` | `github.com/aetomala/token-engine/client` | Go client SDK — connection management, mTLS and static-key credential wiring, thin wrappers for all six RPCs; `NoOpClient` for tests |
 | `gen/v1` | `github.com/aetomala/token-engine/gen/v1` | Generated protobuf and gRPC stubs |
 
 ---
