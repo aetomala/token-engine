@@ -85,6 +85,8 @@ All configuration is via environment variables. The service exits fatally at sta
 
 **Duration format:** Go duration strings — `5m`, `30m`, `1h30m`, `300s`.
 
+For per-version upgrade instructions see [MIGRATION.md](doc/MIGRATION.md).
+
 ---
 
 ## API Reference

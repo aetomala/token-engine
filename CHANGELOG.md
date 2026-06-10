@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added `doc/MIGRATION.md` — per-version operator upgrade guide covering all version boundaries v0.1.0 through v0.7.0; each section documents what changed, required operator actions, and consequences of skipping
 - Added `client/` package: Go client SDK wrapping the generated gRPC stubs; `NewClient` with functional options for mTLS (`WithMTLS`), plaintext (`WithPlaintext`), static API key (`WithStaticKey`), connect timeout (`WithConnectTimeout`), and interceptor injection (`WithUnaryInterceptor`); `NoOpClient` for tests; `NewClientFromStub` for unit-test stub injection; `MockClient` generated in `internal/testutil`
 - Added `examples/grpc-client` and `examples/mtls-client` minimal operator example programs using the new client package
 
