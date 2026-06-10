@@ -27,22 +27,23 @@ All configuration is read from environment variables at startup. Missing require
 | `TOKEN_ENGINE_REDIS_ADDR` | `localhost:6379` | Redis server address (`host:port`). |
 | `TOKEN_ENGINE_REDIS_PASSWORD` | _(empty)_ | Redis password. |
 | `TOKEN_ENGINE_REDIS_DB` | `0` | Redis database index. |
-| `TOKEN_ENGINE_TLS_MODE` | `disabled` | TLS mode: `mtls` or `disabled`. |
+| `TOKEN_ENGINE_TLS_MODE` | `mtls` | TLS mode: `mtls` or `disabled`. |
 | `TOKEN_ENGINE_TLS_CERT_FILE` | _(empty)_ | Path to server TLS certificate (mtls only). |
 | `TOKEN_ENGINE_TLS_KEY_FILE` | _(empty)_ | Path to server TLS private key (mtls only). |
 | `TOKEN_ENGINE_TLS_CA_FILE` | _(empty)_ | Path to CA certificate for client verification (mtls only). |
 | `TOKEN_ENGINE_GRPC_ADDR` | `:9090` | gRPC listener bind address. |
 | `TOKEN_ENGINE_HTTP_ADDR` | `:8080` | HTTP listener bind address. |
-| `TOKEN_ENGINE_IDEMPOTENCY_TTL` | `5m` | Idempotency key TTL in Redis. Must be at least 2x the caller's maximum retry duration. |
+| `TOKEN_ENGINE_JWKS_CACHE_MAX_AGE` | `5m` | Controls the `Cache-Control: max-age` value returned by the JWKS endpoint. |
+| `TOKEN_ENGINE_IDEMPOTENCY_TTL` | `24h` | Idempotency key TTL in Redis. Must be at least 2x the caller's maximum retry duration. |
 | `TOKEN_ENGINE_LOCK_TTL` | `30s` | TTL for all distributed lock keys. Must be long enough for a full key rotation write under degraded Redis. |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | `5m` | Time between reconciliation passes. |
 | `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | `100` | Tokens fetched per `ListTokens` page during reconciliation. |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | `1m` | Minimum elapsed time since last key generation before a new rotation is attempted. |
-| `TOKEN_ENGINE_OTLP_ENDPOINT` | _(empty)_ | OTLP gRPC endpoint for trace export. Tracing is disabled when empty. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTLP gRPC endpoint for trace export. Tracing is disabled when empty. |
 | `TOKEN_ENGINE_CALLER_REGISTRY_PATH` | _(empty)_ | Path to caller registry YAML. All callers are permitted when empty. |
 | `TOKEN_ENGINE_STATIC_CALLER_KEYS` | _(empty)_ | Comma-separated static API keys for non-mtls authentication. |
-| `TOKEN_ENGINE_MAX_CONNECTION_AGE` | `5m` | gRPC keepalive `MaxConnectionAge`. |
-| `TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE` | `30s` | gRPC keepalive `MaxConnectionAgeGrace`. |
+| `TOKEN_ENGINE_MAX_CONNECTION_AGE` | `30m` | gRPC keepalive `MaxConnectionAge`. |
+| `TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE` | `5m` | gRPC keepalive `MaxConnectionAgeGrace`. |
 
 ## 4. Multi-Audience Token Design Guidance
 

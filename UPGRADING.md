@@ -1,5 +1,13 @@
 # Upgrading token-engine
 
+## v0.7.x → v0.8.0
+
+No operator action required. v0.8.0 adds documentation, ADRs, and the `client/` Go SDK package.
+There are no changes to environment variables, Redis key layouts, gRPC protocol, or runtime
+behavior. Drop-in upgrade from v0.7.x.
+
+---
+
 ## v0.6.0 → v0.7.0
 
 ### jwtauth v1.0.0 upgrade — Redis key namespace isolation

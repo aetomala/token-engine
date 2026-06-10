@@ -80,10 +80,16 @@ All configuration is via environment variables. The service exits fatally at sta
 | `TOKEN_ENGINE_REDIS_PASSWORD` | string | `` | — |
 | `TOKEN_ENGINE_REDIS_DB` | int | `0` | warning + default |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | string | `` | no-op tracer (no traces) |
+| `TOKEN_ENGINE_LOCK_TTL` | duration | `30s` | warning + default |
+| `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | duration | `5m` | warning + default |
+| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | int | `100` | warning + default |
+| `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | duration | `1m` | warning + default |
 
 **`TOKEN_ENGINE_STATIC_CALLER_KEYS` format:** `apikey1=caller-identity-1,apikey2=caller-identity-2`
 
 **Duration format:** Go duration strings — `5m`, `30m`, `1h30m`, `300s`.
+
+For per-version upgrade instructions see [MIGRATION.md](doc/MIGRATION.md).
 
 ---
 
@@ -187,6 +193,7 @@ Available at `GET /metrics` (Prometheus text format).
 | `token_engine_idempotency_total` | Counter | Idempotency operations |
 | `token_engine_active_tenants` | Gauge | Active tenant count |
 | `token_engine_tenant_registry_operations_total` | Counter | Tenant registry operations |
+| `token_engine_jwks_key_count` | Gauge | Non-expired signing keys at the JWKS endpoint, per tenant |
 
 See [doc/METRICS.md](doc/METRICS.md) for full label reference and PromQL examples.
 
@@ -269,6 +276,8 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
 | v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC; `MTLSAuthenticator`; static YAML caller registry; `MultiTenantRegistry` with `Add`/`Drain`/`Remove`; mTLS gRPC server credentials (TLS 1.3 min) |
 | v0.6 | ✅ Complete | Distributed lock package (`RedisLock`), `CursorReconciler` (cursor-based token reconciliation), `RefreshToken` idempotency, JWKS key count metric, Kubernetes manifests, operator + pre-upgrade runbooks, `govulncheck` + `revive`/`godot` enforced in CI |
+| v0.7 | ✅ Complete | jwtauth v1.0.0 upgrade (per-tenant Redis key namespace isolation), `NoOpLocker` + `NoOpLock` test utilities, ADR-003 through ADR-006 corrections |
+| v0.8 | ✅ Complete | `doc/MIGRATION.md` per-version upgrade guide, `client/` Go SDK package, `examples/grpc-client` + `examples/mtls-client`, ADR-007 through ADR-010 filed, `docs/` consolidated into `doc/` |
 
 ---
 
