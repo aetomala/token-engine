@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [v0.8.0] — 2026-06-10
+
 ### Added
 
 - Added `doc/MIGRATION.md` — per-version operator upgrade guide covering all version boundaries v0.1.0 through v0.7.0; each section documents what changed, required operator actions, and consequences of skipping

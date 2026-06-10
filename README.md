@@ -276,6 +276,8 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor, 24h TTL default, shutdown hardening, end-to-end integration test suite |
 | v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC; `MTLSAuthenticator`; static YAML caller registry; `MultiTenantRegistry` with `Add`/`Drain`/`Remove`; mTLS gRPC server credentials (TLS 1.3 min) |
 | v0.6 | ✅ Complete | Distributed lock package (`RedisLock`), `CursorReconciler` (cursor-based token reconciliation), `RefreshToken` idempotency, JWKS key count metric, Kubernetes manifests, operator + pre-upgrade runbooks, `govulncheck` + `revive`/`godot` enforced in CI |
+| v0.7 | ✅ Complete | jwtauth v1.0.0 upgrade (per-tenant Redis key namespace isolation), `NoOpLocker` + `NoOpLock` test utilities, ADR-003 through ADR-006 corrections |
+| v0.8 | ✅ Complete | `doc/MIGRATION.md` per-version upgrade guide, `client/` Go SDK package, `examples/grpc-client` + `examples/mtls-client`, ADR-007 through ADR-010 filed, `docs/` consolidated into `doc/` |
 
 ---
 
