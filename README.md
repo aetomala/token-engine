@@ -80,6 +80,10 @@ All configuration is via environment variables. The service exits fatally at sta
 | `TOKEN_ENGINE_REDIS_PASSWORD` | string | `` | — |
 | `TOKEN_ENGINE_REDIS_DB` | int | `0` | warning + default |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | string | `` | no-op tracer (no traces) |
+| `TOKEN_ENGINE_LOCK_TTL` | duration | `30s` | warning + default |
+| `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | duration | `5m` | warning + default |
+| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | int | `100` | warning + default |
+| `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | duration | `1m` | warning + default |
 
 **`TOKEN_ENGINE_STATIC_CALLER_KEYS` format:** `apikey1=caller-identity-1,apikey2=caller-identity-2`
 
@@ -189,6 +193,7 @@ Available at `GET /metrics` (Prometheus text format).
 | `token_engine_idempotency_total` | Counter | Idempotency operations |
 | `token_engine_active_tenants` | Gauge | Active tenant count |
 | `token_engine_tenant_registry_operations_total` | Counter | Tenant registry operations |
+| `token_engine_jwks_key_count` | Gauge | Non-expired signing keys at the JWKS endpoint, per tenant |
 
 See [doc/METRICS.md](doc/METRICS.md) for full label reference and PromQL examples.
 

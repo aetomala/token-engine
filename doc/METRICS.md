@@ -103,18 +103,24 @@ rate(token_engine_tenant_registry_operations_total[5m])
 
 ---
 
----
-
-## Planned Metrics (v0.6)
-
 ### token_engine_jwks_key_count
 
 | Field | Value |
 |---|---|
 | Type | Gauge |
-| Description | Number of non-expired public keys currently available in the JWKS endpoint, per tenant |
+| Description | Number of non-expired public keys currently available in the JWKS endpoint |
 | Labels | `tenant_id` |
-| Purpose | Canary for key rotation instability — alert if count drops to 0 for any tenant |
+| Emitted | On every JWKS request, before fetching the JWKS — only when `GetAllKeyInfo` succeeds; silently skipped on error |
+
+**PromQL examples:**
+
+```promql
+# Current key count for a specific tenant
+token_engine_jwks_key_count{tenant_id="tenant-a"}
+
+# Alert: no signing keys available for any tenant
+token_engine_jwks_key_count == 0
+```
 
 ---
 
@@ -139,5 +145,27 @@ groups:
           severity: critical
         annotations:
           summary: "token-engine is not emitting metrics"
+
+      - alert: TokenEngineNoSigningKeys
+        expr: token_engine_jwks_key_count == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "token-engine has no signing keys for tenant {{ $labels.tenant_id }}"
 ```
+
+---
+
+## Related Configuration
+
+The following environment variables influence metric behavior and should be considered when
+interpreting the metrics above.
+
+| Variable | Default | Affected Metric | Notes |
+|---|---|---|---|
+| `TOKEN_ENGINE_LOCK_TTL` | `30s` | _(no dedicated metric)_ | TTL for distributed lock keys; controls how long key rotation and reconciliation are mutually exclusive across replicas |
+| `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | `5m` | _(no dedicated metric)_ | Time between reconciliation passes; affects how quickly stale refresh tokens are purged |
+| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | `100` | _(no dedicated metric)_ | Tokens fetched per page during reconciliation; large values increase Redis scan duration per pass |
+| `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | `1m` | `token_engine_jwks_key_count` | Minimum time between key rotations; a count of 1 near a rotation boundary is expected behavior, not a fault |
 

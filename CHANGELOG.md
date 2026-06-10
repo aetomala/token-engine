@@ -15,6 +15,23 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added `client/` package: Go client SDK wrapping the generated gRPC stubs; `NewClient` with functional options for mTLS (`WithMTLS`), plaintext (`WithPlaintext`), static API key (`WithStaticKey`), connect timeout (`WithConnectTimeout`), and interceptor injection (`WithUnaryInterceptor`); `NoOpClient` for tests; `NewClientFromStub` for unit-test stub injection; `MockClient` generated in `internal/testutil`
 - Added `examples/grpc-client` and `examples/mtls-client` minimal operator example programs using the new client package
 
+### Fixed
+
+- Corrected metric name `token_engine_jwks_active_key_count` → `token_engine_jwks_key_count` in
+  CHANGELOG v0.6.0 entry and `doc/MIGRATION.md` — the actual emitted name has always been
+  `token_engine_jwks_key_count`
+- Corrected five stale defaults in `doc/operator-guide.md` configuration table:
+  `TOKEN_ENGINE_TLS_MODE` (`disabled` → `mtls`), `TOKEN_ENGINE_IDEMPOTENCY_TTL` (`5m` → `24h`),
+  `TOKEN_ENGINE_MAX_CONNECTION_AGE` (`5m` → `30m`), `TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE`
+  (`30s` → `5m`), and `OTEL_EXPORTER_OTLP_ENDPOINT` env var name (was `TOKEN_ENGINE_OTLP_ENDPOINT`);
+  added missing `TOKEN_ENGINE_JWKS_CACHE_MAX_AGE` row
+- Promoted `token_engine_jwks_key_count` in `doc/METRICS.md` from planned to active — added type,
+  labels, emission condition, PromQL examples, alerting rule, and related-configuration cross-reference
+  table for the four v0.6.0 behavior-affecting fields
+- Added four missing v0.6.0 config fields to README.md configuration table (`TOKEN_ENGINE_LOCK_TTL`,
+  `TOKEN_ENGINE_RECONCILIATION_INTERVAL`, `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE`,
+  `TOKEN_ENGINE_ROTATION_WINDOW_GUARD`) and added `token_engine_jwks_key_count` to the metrics table
+
 ### Changed
 
 - Consolidated `docs/` directory into `doc/` — moved `operator-guide.md` and `pre-upgrade-runbook.md` into `doc/`; `docs/` directory removed
@@ -56,7 +73,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `RefreshToken` idempotency — idempotency interceptor extended to deduplicate `RefreshToken`
   requests using `IdempotencyStore`; pre-handler `Get()` ordering preserves atomicity; resolves
   v0.5.0 deferral
-- JWKS key count metric — `token_engine_jwks_active_key_count` gauge emitted on every JWKS
+- JWKS key count metric — `token_engine_jwks_key_count` gauge emitted on every JWKS
   request; `JWKSHandler` updated to accept tenant ID and metrics for per-tenant key tracking
 - Kubernetes deployment manifest — `deploy/k8s/deployment.yaml` with startup, liveness, and
   readiness probes co-designed with key rotation interval
