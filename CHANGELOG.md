@@ -20,6 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Filed ADR-007 documenting `MultiTenantRegistry` design — `Add`/`Drain`/`Remove` lifecycle rationale, two-phase shutdown semantic, and per-tenant Redis key prefix and namespace isolation
 - Filed ADR-008 documenting the mTLS authentication model — CN-based caller identity, `RequireAndVerifyClientCert` rationale, TLS 1.3 minimum, and coexistence with static key auth
 - Filed ADR-009 documenting the distributed lock design — SET NX PX acquisition, Lua CAS-delete release rationale, UUID v4 lock token, per-call TTL semantics, and acceptable failure modes for best-effort operations; added missing `internal/lock` row to ARCHITECTURE.md package layout
+- Filed ADR-010 documenting the JWKS per-tenant observability namespace strategy — two-tier approach (library metric namespace prefix vs. service-level `tenant_id` label), shared Prometheus registry rationale, and the current `GaugeVec` migration gap for `token_engine_jwks_key_count`
 
 ---
 
