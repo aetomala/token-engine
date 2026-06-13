@@ -11,6 +11,13 @@ docker compose up   # or: podman compose up
 See [`docker-compose.yaml`](../docker-compose.yaml) for the default credentials
 (`devkey=local-client`, issuer `local-dev`, audience `local-api`).
 
+| Example | Auth | Demonstrates |
+|---|---|---|
+| `grpc-client` | Static API key | Minimal gRPC client — `IssueToken` and token pair output |
+| `mtls-client` | mTLS certificate | Certificate-based auth with `WithMTLS` |
+| `custom-claims` | Static API key | Custom claims issuance and JWKS-based JWT validation |
+| `multi-tenant` | Static API key | Per-tenant isolation and cross-tenant token rejection |
+
 ---
 
 ## grpc-client
@@ -46,3 +53,19 @@ TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/custom-claims
 
 Custom claims in `IssueTokenRequest.Claims` are promoted to top-level JWT fields — they
 are not nested under a `"claims"` key in the token payload.
+
+## multi-tenant
+
+Runs two token-engine instances (tenant-alpha on `:9090`, tenant-beta on `:9091`) sharing
+a single Redis. Issues and refreshes tokens for each tenant, then demonstrates that a
+refresh token issued for one tenant is rejected when presented with a different tenant ID.
+
+```bash
+docker compose -f examples/multi-tenant/docker-compose.yaml up -d
+sleep 10
+TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/multi-tenant
+docker compose -f examples/multi-tenant/docker-compose.yaml down
+```
+
+See `examples/multi-tenant/caller-registry.yaml` for a two-tenant mTLS caller authorization
+reference.

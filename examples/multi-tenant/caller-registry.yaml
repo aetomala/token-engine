@@ -1,0 +1,13 @@
+# caller-registry.yaml — static caller authorization for the multi-tenant example.
+# Maps TLS certificate Common Names to permitted tenant IDs.
+# In TLS_MODE=disabled deployments this file is not consulted; it is included here
+# as a reference for mTLS multi-tenant deployments (TOKEN_ENGINE_CALLER_REGISTRY_PATH).
+version: 1
+callers:
+  - identity: "alpha-service"
+    permitted_tenants:
+      - "tenant-alpha"
+  - identity: "admin-service"
+    permitted_tenants:
+      - "tenant-alpha"
+      - "tenant-beta"
