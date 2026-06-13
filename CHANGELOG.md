@@ -15,6 +15,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TLS_MODE=disabled` and commented environment variable documentation; runnable with
   `docker compose up` or `podman compose up`; README.md Quick Start updated to lead with
   the compose workflow
+- Added `examples/custom-claims` — runnable example issuing a token with a custom claims
+  map and validating the returned access token against the JWKS endpoint using
+  `golang-jwt/jwt/v5`; demonstrates the top-level claim promotion behaviour
+- Added `examples/README.md` — index for all three client examples with usage commands
 
 ---
 
