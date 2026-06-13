@@ -19,6 +19,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   map and validating the returned access token against the JWKS endpoint using
   `golang-jwt/jwt/v5`; demonstrates the top-level claim promotion behaviour
 - Added `examples/README.md` — index for all three client examples with usage commands
+- Added `examples/multi-tenant` — runnable example issuing and refreshing tokens for two
+  independent tenant-alpha and tenant-beta server instances; demonstrates cross-tenant token
+  rejection and documents Redis key namespace isolation via source comments; includes a
+  self-contained `docker-compose.yaml` and a two-tenant `caller-registry.yaml` reference
+- Updated `examples/README.md` — added comparison table covering all four client examples
 
 ---
 

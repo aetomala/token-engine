@@ -1,0 +1,51 @@
+# Runs two isolated token-engine instances on shared Redis — demonstrating per-tenant
+# key namespace isolation without requiring code changes to the server.
+#
+# Usage:
+#   docker compose up    # from this directory
+#   podman compose up
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  token-engine-alpha:
+    build:
+      context: ../..
+    ports:
+      - "9090:9090"
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 60s
+    environment:
+      TOKEN_ENGINE_ISSUER: tenant-alpha
+      TOKEN_ENGINE_AUDIENCE: alpha-api
+      TOKEN_ENGINE_TLS_MODE: disabled
+      TOKEN_ENGINE_STATIC_CALLER_KEYS: devkey=local-client
+      TOKEN_ENGINE_REDIS_ADDR: redis:6379
+
+  token-engine-beta:
+    build:
+      context: ../..
+    ports:
+      - "9091:9090"
+      - "8081:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 60s
+    environment:
+      TOKEN_ENGINE_ISSUER: tenant-beta
+      TOKEN_ENGINE_AUDIENCE: beta-api
+      TOKEN_ENGINE_TLS_MODE: disabled
+      TOKEN_ENGINE_STATIC_CALLER_KEYS: devkey=local-client
+      TOKEN_ENGINE_REDIS_ADDR: redis:6379
