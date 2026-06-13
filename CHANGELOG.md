@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added `docker-compose.yaml` — single-command local stack (Redis + token-engine) with
+  `TLS_MODE=disabled` and commented environment variable documentation; runnable with
+  `docker compose up` or `podman compose up`; README.md Quick Start updated to lead with
+  the compose workflow
+
 ---
 
 ## [v0.8.0] — 2026-06-10

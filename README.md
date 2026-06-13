@@ -29,6 +29,24 @@ OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN)
 
 ## Quick Start
 
+### Using Docker Compose (recommended)
+
+```bash
+docker compose up          # Docker
+# or: podman compose up    # Podman
+```
+
+The stack starts Redis and token-engine. Once healthy:
+
+```bash
+curl http://localhost:8080/healthz/ready   # → 200 OK
+```
+
+The gRPC server is on `:9090` and the HTTP server (health, metrics, JWKS) is on `:8080`.
+See [`docker-compose.yaml`](docker-compose.yaml) for all pre-configured environment variables.
+
+### Running directly
+
 ```bash
 # Build
 make build
