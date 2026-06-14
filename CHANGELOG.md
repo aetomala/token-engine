@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [v0.9.0] — 2026-06-13
+
 ### Added
 
 - Added `docker-compose.yaml` — single-command local stack (Redis + token-engine) with
