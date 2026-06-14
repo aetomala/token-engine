@@ -242,6 +242,8 @@ make ci             # Full CI pipeline: lint + build + test
 make docker-build   # Build Docker image locally (uses Podman by default)
 make cd             # Build and push multi-platform image to Docker Hub (requires tag)
 make clean          # Remove binary and coverage files
+make examples-build # Build all four examples (go build ./... in each directory)
+make examples-tidy  # Run go mod tidy in all four example directories
 ```
 
 ### Running Tests
@@ -269,7 +271,7 @@ make ci
 Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
 
 ```bash
-docker pull docker.io/angeltomala/token-engine:v0.6.0
+docker pull docker.io/angeltomala/token-engine:v0.9.0
 ```
 
 See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
@@ -296,6 +298,7 @@ Architecture decisions are recorded in [doc/adr/](doc/adr/).
 | v0.6 | ✅ Complete | Distributed lock package (`RedisLock`), `CursorReconciler` (cursor-based token reconciliation), `RefreshToken` idempotency, JWKS key count metric, Kubernetes manifests, operator + pre-upgrade runbooks, `govulncheck` + `revive`/`godot` enforced in CI |
 | v0.7 | ✅ Complete | jwtauth v1.0.0 upgrade (per-tenant Redis key namespace isolation), `NoOpLocker` + `NoOpLock` test utilities, ADR-003 through ADR-006 corrections |
 | v0.8 | ✅ Complete | `doc/MIGRATION.md` per-version upgrade guide, `client/` Go SDK package, `examples/grpc-client` + `examples/mtls-client`, ADR-007 through ADR-010 filed, `docs/` consolidated into `doc/` |
+| v0.9 | ✅ Complete | `docker-compose.yaml` single-command local stack, `examples/custom-claims` + `examples/multi-tenant`, all four examples as independent Go modules with per-example READMEs |
 
 ---
 
