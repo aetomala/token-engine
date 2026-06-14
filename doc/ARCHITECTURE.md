@@ -26,7 +26,7 @@ cmd/token-engine/main.go
 ├── Stores
 │   └── IdempotencyStore (internal/store — RedisIdempotencyStore, v0.4)
 ├── Audit             (internal/audit — SlogAuditStore, v0.3)
-├── Reconciliation    (internal/reconciliation — NoOpReconciler, v0.1)
+├── Reconciliation    (internal/reconciliation — CursorReconciler, v0.6)
 ├── Handlers
 │   ├── TokenHandler  (internal/handler — delegates to jwtauth tokens.TokenManager)
 │   └── JWKSHandler   (internal/handler — delegates to jwtauth keys.KeyManager, v0.3)
@@ -119,19 +119,19 @@ Every component receives three observability fields injected at construction tim
 
 ## jwtauth Integration
 
-token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v0.7.1.
+token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v1.0.0.
 
 The `TokenHandler` depends on the `tokens.TokenManager` interface (introduced in jwtauth v0.7.1), not the concrete `*tokens.Manager` type. This enables service-layer unit testing without a running key store or storage backend — `StaticTenantRegistry.Get` returns the interface, and tests inject `mock_tokens_manager.go` generated against it.
 
 | Component | Interface / Type | Purpose |
 |---|---|---|
-| `tokens.TokenManager` | Interface (v0.7.1) | Token issuance, refresh, revocation, validation |
+| `tokens.TokenManager` | Interface (v1.0.0) | Token issuance, refresh, revocation, validation |
 | `keys.KeyManager` | `*keys.Manager` | Key lifecycle — rotation, loading, JWKS |
 | `storage.RefreshStore` | Interface | Persistent refresh token storage |
 
 token-engine does not implement any JWT signing, key management, or token storage logic. It provides the transport, multi-tenancy, and observability layers that jwtauth does not include by design.
 
-**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v0.7.1 source:
+**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v1.0.0 source:
 
 | Sentinel | Package | gRPC Code |
 |---|---|---|
@@ -172,7 +172,7 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 | `internal/store` | `.../internal/store` | Idempotency store |
 | `internal/lock` | `.../internal/lock` | Distributed lock interfaces (`Locker`/`Lock`) and Redis-backed implementation (SET NX PX + Lua CAS-delete); `NoOpLocker` for single-node deployments — [ADR-009](adr/ADR-009-distributed-lock.md) |
 | `internal/audit` | `.../internal/audit` | Audit logging interface, NoOp, and SlogAuditStore |
-| `internal/reconciliation` | `.../internal/reconciliation` | Token reconciliation interface and NoOp |
+| `internal/reconciliation` | `.../internal/reconciliation` | Token reconciliation interface, NoOp, and `CursorReconciler` (cursor-based, Redis-backed) |
 | `internal/testutil` | `.../internal/testutil` | Generated mocks for all interfaces |
 | `client` | `github.com/aetomala/token-engine/client` | Go client SDK — connection management, mTLS and static-key credential wiring, thin wrappers for all six RPCs; `NoOpClient` for tests |
 | `gen/v1` | `github.com/aetomala/token-engine/gen/v1` | Generated protobuf and gRPC stubs |
@@ -207,6 +207,9 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor (promoted from NoOp), 24h TTL default, shutdown hardening (OTel flush, gRPC 10s drain, HTTP timeouts), end-to-end integration test suite |
 | v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC + handler; `MTLSAuthenticator`; static YAML caller registry (`CallerRegistryConfig`, `LoadCallerRegistryConfig`); `MultiTenantRegistry` with `Add`/`Drain`/`Remove` + per-tenant namespace isolation; mTLS gRPC server credentials (TLS 1.3 min); `deploy/caller-registry.yaml`; integration suite at 12 specs |
 | v0.6 | ✅ Complete | Distributed lock package (`RedisLock`); `CursorReconciler` replacing `NoOpReconciler` (ADR-011); `RefreshToken` idempotency promoted; JWKS key count metric; Kubernetes deployment manifest + startup probe; operator + pre-upgrade runbooks; `govulncheck` + `revive`/`godot` enforced in CI; Go 1.26.4 security bump (GO-2026-5039, GO-2026-5037) |
+| v0.7 | ✅ Complete | jwtauth v0.7.2 → v1.0.0; `NoOpLocker` + `NoOpLock`; ADR-002–006 corrected; operator guide RPC list fixed |
+| v0.8 | ✅ Complete | `client/` Go SDK; `examples/grpc-client` + `examples/mtls-client`; ADR-007–010; `doc/MIGRATION.md`; `doc/` consolidation; METRICS.md promoted `token_engine_jwks_key_count` |
+| v0.9 | ✅ Complete | `docker-compose.yaml` for local development; `examples/custom-claims` + `examples/multi-tenant`; all four examples restructured as independent Go modules with per-example READMEs |
 
 ---
 

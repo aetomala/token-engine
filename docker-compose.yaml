@@ -1,0 +1,63 @@
+# docker-compose.yaml
+#
+# Starts a complete local token-engine stack: Redis + token-engine.
+#
+# Usage:
+#   docker compose up          # Docker
+#   podman compose up          # Podman (requires podman-compose or Podman 4.4+)
+#
+# The service builds from the local Dockerfile. To use the published image instead:
+#   image: docker.io/angeltomala/token-engine:v0.8.0
+#
+# Health probe (from your host, after stack is up):
+#   curl http://localhost:8080/healthz/ready
+#
+# gRPC (from your host, requires grpcurl):
+#   grpcurl -plaintext -H 'x-api-key: devkey' \
+#     -d '{"sub":"user-1","tenant_id":"local-dev"}' \
+#     localhost:9090 token.v1.TokenEngine/IssueToken
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  token-engine:
+    build: .
+    ports:
+      - "9090:9090"   # gRPC
+      - "8080:8080"   # HTTP: /healthz/live, /healthz/ready, /metrics, /.well-known/jwks.json
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 60s   # allow gRPC drain (10 s) + OTel flush + HTTP shutdown
+    environment:
+      # ===== Required =====
+      # JWT iss claim — used as the tenant identifier.
+      TOKEN_ENGINE_ISSUER: local-dev
+      # JWT aud claim — must match the audience your callers expect.
+      TOKEN_ENGINE_AUDIENCE: local-api
+
+      # ===== Authentication =====
+      # TLS mode: "disabled" uses static API keys; "mtls" requires cert/key/CA files.
+      TOKEN_ENGINE_TLS_MODE: disabled
+      # Static API keys — format: key=caller-identity (comma-separated for multiple).
+      # Pass the key in the x-api-key gRPC metadata header (or Authorization: Bearer <key>).
+      TOKEN_ENGINE_STATIC_CALLER_KEYS: devkey=local-client
+
+      # ===== Redis =====
+      # Must use the compose service name ("redis"), not "localhost".
+      TOKEN_ENGINE_REDIS_ADDR: redis:6379
+      # TOKEN_ENGINE_REDIS_PASSWORD:   # set if your Redis requires a password
+      # TOKEN_ENGINE_REDIS_DB: 0       # Redis database index (default: 0)
+
+      # ===== Optional observability =====
+      # Uncomment to export OTLP traces to a local collector (e.g. Jaeger, Tempo).
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317

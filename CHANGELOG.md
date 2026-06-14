@@ -11,6 +11,33 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [v0.9.0] — 2026-06-13
+
+### Added
+
+- Added `docker-compose.yaml` — single-command local stack (Redis + token-engine) with
+  `TLS_MODE=disabled` and commented environment variable documentation; runnable with
+  `docker compose up` or `podman compose up`; README.md Quick Start updated to lead with
+  the compose workflow
+- Added `examples/custom-claims` — runnable example issuing a token with a custom claims
+  map and validating the returned access token against the JWKS endpoint using
+  `golang-jwt/jwt/v5`; demonstrates the top-level claim promotion behaviour
+- Added `examples/README.md` — index for all three client examples with usage commands
+- Added `examples/multi-tenant` — runnable example issuing and refreshing tokens for two
+  independent tenant-alpha and tenant-beta server instances; demonstrates cross-tenant token
+  rejection and documents Redis key namespace isolation via source comments; includes a
+  self-contained `docker-compose.yaml` and a two-tenant `caller-registry.yaml` reference
+- Updated `examples/README.md` — added comparison table covering all four client examples
+
+### Changed
+
+- Restructured `examples/` — each of the four examples (`grpc-client`, `mtls-client`,
+  `custom-claims`, `multi-tenant`) is now an independent Go module with its own `go.mod`,
+  `go.sum`, and `README.md`; mirrors the structure used in the jwtauth examples directory;
+  a new `examples-build` Makefile target and CI step verify all examples build correctly
+
+---
+
 ## [v0.8.0] — 2026-06-10
 
 ### Added
