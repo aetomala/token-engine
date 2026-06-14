@@ -1,6 +1,7 @@
 # token-engine examples
 
-Runnable Go programs demonstrating token-engine client usage.
+Runnable Go programs demonstrating token-engine client usage. Each example is an independent
+Go module — run from its own directory with `go run .`, not from the repo root.
 
 All examples assume a running token-engine instance. The easiest way to start one:
 
@@ -26,7 +27,8 @@ Plaintext gRPC client using static API key authentication. Calls `IssueToken` wi
 minimal request and prints the returned token pair.
 
 ```bash
-TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/grpc-client
+cd examples/grpc-client
+TOKEN_ENGINE_STATIC_KEY=devkey go run .
 ```
 
 ## mtls-client
@@ -35,10 +37,11 @@ mTLS gRPC client using mutual TLS certificate authentication. Falls back to plai
 certificate paths are not set.
 
 ```bash
+cd examples/mtls-client
 CLIENT_CERT=path/to/client.crt \
 CLIENT_KEY=path/to/client.key \
 CA_CERT=path/to/ca.crt \
-go run ./examples/mtls-client
+go run .
 ```
 
 ## custom-claims
@@ -48,7 +51,8 @@ returned access token against the service's JWKS endpoint and prints both the re
 JWT claims and the custom claims.
 
 ```bash
-TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/custom-claims
+cd examples/custom-claims
+TOKEN_ENGINE_STATIC_KEY=devkey go run .
 ```
 
 Custom claims in `IssueTokenRequest.Claims` are promoted to top-level JWT fields — they
@@ -61,10 +65,11 @@ a single Redis. Issues and refreshes tokens for each tenant, then demonstrates t
 refresh token issued for one tenant is rejected when presented with a different tenant ID.
 
 ```bash
-docker compose -f examples/multi-tenant/docker-compose.yaml up -d
+cd examples/multi-tenant
+docker compose up -d   # or: podman compose up -d
 sleep 10
-TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/multi-tenant
-docker compose -f examples/multi-tenant/docker-compose.yaml down
+TOKEN_ENGINE_STATIC_KEY=devkey go run .
+docker compose down
 ```
 
 See `examples/multi-tenant/caller-registry.yaml` for a two-tenant mTLS caller authorization
