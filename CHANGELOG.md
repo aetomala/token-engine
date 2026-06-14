@@ -25,6 +25,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   self-contained `docker-compose.yaml` and a two-tenant `caller-registry.yaml` reference
 - Updated `examples/README.md` — added comparison table covering all four client examples
 
+### Changed
+
+- Restructured `examples/` — each of the four examples (`grpc-client`, `mtls-client`,
+  `custom-claims`, `multi-tenant`) is now an independent Go module with its own `go.mod`,
+  `go.sum`, and `README.md`; mirrors the structure used in the jwtauth examples directory;
+  a new `examples-build` Makefile target and CI step verify all examples build correctly
+
 ---
 
 ## [v0.8.0] — 2026-06-10

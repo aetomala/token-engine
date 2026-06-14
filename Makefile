@@ -1,4 +1,4 @@
-.PHONY: build test coverage lint proto-gen ci docker-build cd clean
+.PHONY: build test coverage lint proto-gen ci docker-build cd clean examples-build examples-tidy
 
 BINARY   := token-engine
 PKG      := ./...
@@ -41,3 +41,15 @@ clean:
 	go clean $(PKG)
 	find . -name "cover*.out" -delete
 	rm -f coverage.html $(BINARY)
+
+examples-build:
+	@for d in examples/grpc-client examples/mtls-client examples/custom-claims examples/multi-tenant; do \
+		echo "==> building $$d"; \
+		(cd $$d && go build ./...); \
+	done
+
+examples-tidy:
+	@for d in examples/grpc-client examples/mtls-client examples/custom-claims examples/multi-tenant; do \
+		echo "==> tidying $$d"; \
+		(cd $$d && go mod tidy); \
+	done
