@@ -17,6 +17,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Fixed `RefreshToken` returning an empty `refresh_token` — the RPC now performs true token
   rotation, issuing a replacement refresh token alongside the new access token so clients can
   chain successive refresh calls without re-authenticating
+- Fixed `IssueToken` and `RefreshToken` returning always-zero `access_token_expires_in` and
+  `refresh_token_expires_in` — both RPCs now populate the fields with seconds-until-expiry
+  derived from the issued tokens
 - Fixed `tenant_id` in the README Quick Start client snippet (`"tenant-abc"` → `"my-service"`),
   `examples/grpc-client`, and `examples/mtls-client` (`"default"` → reads from
   `TOKEN_ENGINE_ISSUER` env var, defaulting to `"local-dev"`); API reference for `IssueToken`
