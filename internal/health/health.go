@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/aetomala/jwtauth/pkg/keys"
 	"github.com/aetomala/token-engine/internal/audit"
@@ -16,6 +18,7 @@ const (
 	CheckerNameRedis           = "redis"
 	CheckerNameKeyAvailability = "key_availability"
 	CheckerNameAudit           = "audit"
+	CheckerNameReconciler      = "reconciler"
 )
 
 // Checker is the extension interface for readiness checks.
@@ -134,4 +137,49 @@ func (c *AuditChecker) Name() string { return CheckerNameAudit }
 // Returns the context error if the context is cancelled.
 func (c *AuditChecker) Check(ctx context.Context) error {
 	return c.store.Ping(ctx)
+}
+
+// ReconcilerStatus is satisfied by any reconciler that exposes its last successful pass time.
+// Implemented by CursorReconciler and NoOpReconciler — neither is imported directly, keeping
+// health/ and reconciliation/ fully decoupled.
+type ReconcilerStatus interface {
+	// LastSuccessAt returns the time of the last successful reconciliation pass.
+	LastSuccessAt() time.Time
+}
+
+// ReconcilerChecker checks that a reconciliation pass has completed within the configured
+// threshold. It is suitable for use in multi-goroutine environments — all methods are safe
+// for concurrent use.
+type ReconcilerChecker struct {
+	r         ReconcilerStatus
+	threshold time.Duration
+}
+
+var _ Checker = (*ReconcilerChecker)(nil)
+
+// NewReconcilerChecker returns a new ReconcilerChecker. Returns an error on Check if no
+// reconciliation pass has completed within threshold. Callers should pass 2× the configured
+// reconciliation interval as the threshold.
+func NewReconcilerChecker(r ReconcilerStatus, threshold time.Duration) *ReconcilerChecker {
+	return &ReconcilerChecker{r: r, threshold: threshold}
+}
+
+// Name returns the stable identifier for this checker.
+func (c *ReconcilerChecker) Name() string { return CheckerNameReconciler }
+
+// Check returns nil if a reconciliation pass completed within the configured threshold.
+// Returns a descriptive error including the elapsed time and threshold if the last pass
+// is stale. Returns the context error if the context is cancelled.
+func (c *ReconcilerChecker) Check(ctx context.Context) error {
+	// ===== STEP 1: Check context =====
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// ===== STEP 2: Evaluate staleness =====
+	elapsed := time.Since(c.r.LastSuccessAt())
+	if elapsed > c.threshold {
+		return fmt.Errorf("no reconciliation pass in %s (threshold %s)", elapsed.Truncate(time.Second), c.threshold)
+	}
+	return nil
 }

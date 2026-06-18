@@ -2,6 +2,7 @@ package reconciliation
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/aetomala/jwtauth/pkg/tokens"
@@ -16,20 +17,30 @@ const (
 )
 
 // CursorReconciler is a cursor-based best-effort reconciler that processes tokens per tenant
-// using distributed locks to prevent concurrent reconciliation passes.
+// using distributed locks to prevent concurrent reconciliation passes. All methods are safe
+// for concurrent use.
 type CursorReconciler struct {
+	// ===== Observability =====
+	logger  observability.Logger
+	metrics observability.Metrics
+
+	// ===== Dependencies =====
 	managers map[string]tokens.TokenManager
 	locker   lock.Locker
 	redis    *redis.Client
-	logger   observability.Logger
-	metrics  observability.Metrics
+
+	// ===== Config =====
 	pageSize int
 	lockTTL  time.Duration
+
+	// ===== State =====
+	lastSuccessAt atomic.Int64 // Unix nanos of the last successful Run pass.
 }
 
 var _ Reconciler = (*CursorReconciler)(nil)
 
-// NewCursorReconciler returns a new CursorReconciler.
+// NewCursorReconciler returns a new CursorReconciler. LastSuccessAt is initialized to the
+// current time so the health checker grace window starts from server startup, not the epoch.
 func NewCursorReconciler(
 	managers map[string]tokens.TokenManager,
 	locker lock.Locker,
@@ -39,7 +50,7 @@ func NewCursorReconciler(
 	pageSize int,
 	lockTTL time.Duration,
 ) *CursorReconciler {
-	return &CursorReconciler{
+	r := &CursorReconciler{
 		managers: managers,
 		locker:   locker,
 		redis:    redisClient,
@@ -48,11 +59,21 @@ func NewCursorReconciler(
 		pageSize: pageSize,
 		lockTTL:  lockTTL,
 	}
+	r.lastSuccessAt.Store(time.Now().UnixNano())
+	return r
 }
 
-// Run executes a single reconciliation pass over all tenants.
-// It acquires a per-tenant distributed lock before processing and uses a Redis-persisted
-// cursor to resume paginated ListTokens calls across restarts.
+// LastSuccessAt returns the time of the last successful Run pass. Returns the construction
+// time if no pass has completed yet — callers treat this as the start of the grace window.
+func (r *CursorReconciler) LastSuccessAt() time.Time {
+	return time.Unix(0, r.lastSuccessAt.Load())
+}
+
+// Run executes a single reconciliation pass over all tenants. It acquires a per-tenant
+// distributed lock before processing and uses a Redis-persisted cursor to resume paginated
+// ListTokens calls across restarts. On successful completion of the full pass, lastSuccessAt
+// is updated so health checks can observe liveness.
+// Returns the context error if the context is cancelled before all tenants are processed.
 func (r *CursorReconciler) Run(ctx context.Context) error {
 	for tenantID := range r.managers {
 		select {
@@ -62,6 +83,9 @@ func (r *CursorReconciler) Run(ctx context.Context) error {
 		}
 		r.processTenant(ctx, tenantID)
 	}
+
+	// ===== Record successful pass =====
+	r.lastSuccessAt.Store(time.Now().UnixNano())
 	return nil
 }
 
