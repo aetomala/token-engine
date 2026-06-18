@@ -156,6 +156,8 @@ var _ = Describe("TokenEngine", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.AccessToken).NotTo(BeEmpty())
 				Expect(resp.RefreshToken).NotTo(BeEmpty())
+				Expect(resp.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+				Expect(resp.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
 			})
 		})
 
@@ -242,6 +244,8 @@ var _ = Describe("TokenEngine", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(refreshed.AccessToken).NotTo(BeEmpty())
 				Expect(refreshed.RefreshToken).NotTo(BeEmpty())
+				Expect(refreshed.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+				Expect(refreshed.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
 			})
 		})
 
