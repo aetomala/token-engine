@@ -40,9 +40,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	tenantID := envOrDefault("TOKEN_ENGINE_ISSUER", "local-dev")
 	pair, err := c.IssueToken(ctx, &tokenv1.IssueTokenRequest{
 		Sub:      "user-123",
-		TenantId: "default",
+		TenantId: tenantID,
 	})
 	if err != nil {
 		log.Fatalf("IssueToken: %v", err)

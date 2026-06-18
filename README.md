@@ -68,9 +68,11 @@ client := tokenv1.NewTokenEngineClient(conn)
 
 resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
     Sub:      "user-123",
-    TenantId: "tenant-abc",
+    TenantId: "my-service",
 })
 ```
+
+`tenant_id` must equal the server's `TOKEN_ENGINE_ISSUER` — with the config above, that is `"my-service"`.
 
 ---
 
@@ -120,7 +122,7 @@ Issues a new access + refresh token pair.
 | Field | Type | Description |
 |---|---|---|
 | `sub` | string | Subject identifier (required) |
-| `tenant_id` | string | Tenant scoping for multi-tenancy (required) |
+| `tenant_id` | string | Must equal the server's `TOKEN_ENGINE_ISSUER` (required) |
 | `idempotency_key` | string | Deduplication key — same key returns same tokens within TTL |
 | `claims` | map<string,string> | Custom claims stamped on the access token |
 | `audiences` | repeated string | Audience override; defaults to `TOKEN_ENGINE_AUDIENCE` |

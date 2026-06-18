@@ -12,6 +12,10 @@ Falls back to plaintext if certificate paths are not set.
 
     CLIENT_CERT=client.crt CLIENT_KEY=client.key CA_CERT=ca.crt go run .
 
+`tenant_id` defaults to `local-dev`. Set `TOKEN_ENGINE_ISSUER` to match your server's issuer:
+
+    TOKEN_ENGINE_ISSUER=my-service CLIENT_CERT=client.crt CLIENT_KEY=client.key CA_CERT=ca.crt go run .
+
 ## Usage — plaintext fallback
 
     go run .
