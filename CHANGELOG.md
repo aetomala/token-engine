@@ -14,6 +14,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Fixed empty caller registry in `TLS_MODE=disabled` denying every tenant-scoped RPC; when no
   `TOKEN_ENGINE_CALLER_REGISTRY_PATH` is set, all callers are now permitted and a startup warning
   is logged — mTLS mode is unaffected and still requires an explicit registry file
+- Fixed `RefreshToken` returning an empty `refresh_token` — the RPC now performs true token
+  rotation, issuing a replacement refresh token alongside the new access token so clients can
+  chain successive refresh calls without re-authenticating
 - Fixed `tenant_id` in the README Quick Start client snippet (`"tenant-abc"` → `"my-service"`),
   `examples/grpc-client`, and `examples/mtls-client` (`"default"` → reads from
   `TOKEN_ENGINE_ISSUER` env var, defaulting to `"local-dev"`); API reference for `IssueToken`

@@ -96,7 +96,8 @@ func (h *TokenHandler) IssueToken(ctx context.Context, req *tokenv1.IssueTokenRe
 	return &tokenv1.TokenPair{AccessToken: access, RefreshToken: refresh}, nil
 }
 
-// RefreshToken issues a new access token using a valid refresh token.
+// RefreshToken rotates the access and refresh token pair using a valid refresh token,
+// preserving custom claims on the replacement refresh token.
 func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTokenRequest) (*tokenv1.TokenPair, error) {
 	// ===== STEP 1: Open span =====
 	ctx, span := h.tracer.Start(ctx, "RefreshToken")
@@ -116,7 +117,7 @@ func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTok
 		customClaims[k] = v
 	}
 
-	// ===== STEP 4: Refresh access token =====
+	// ===== STEP 4: Rotate access token — revokes the presented refresh token atomically =====
 	access, err := manager.RefreshAccessTokenWithClaims(ctx, req.RefreshToken, customClaims)
 	if err != nil {
 		mapped := observability.MapLibraryError(err)
@@ -125,8 +126,26 @@ func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTok
 		return nil, mapped
 	}
 
+	// ===== STEP 5: Recover subject and audience from new access token =====
+	registered, err := manager.ValidateAccessToken(ctx, access)
+	if err != nil {
+		h.logger.Error(ctx, "failed to validate access token during refresh rotation", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "refresh rotation: access token validation failed")
+	}
+
+	// ===== STEP 6: Issue replacement refresh token with original claims =====
+	refresh, err := manager.IssueRefreshTokenWithClaims(ctx, registered.Subject, customClaims, tokens.WithAudience([]string(registered.Audience)...))
+	if err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
 	span.SetStatus(observability.StatusOK, "")
-	return &tokenv1.TokenPair{AccessToken: access}, nil
+	return &tokenv1.TokenPair{AccessToken: access, RefreshToken: refresh}, nil
 }
 
 // RevokeToken revokes a specific refresh token by resolving its token ID and revoking it.
