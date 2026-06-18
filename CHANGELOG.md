@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added `NewReconcilerChecker` health check — `/healthz/ready` now reports `reconciler` as
+  the failed check if `CursorReconciler` has not completed a pass within 2× the configured
+  `TOKEN_ENGINE_RECONCILIATION_INTERVAL` (default threshold: 10m); `NoOpReconciler` is always
+  reported healthy
+
 ---
 
 ## [v0.9.0] — 2026-06-13

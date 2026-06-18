@@ -306,6 +306,7 @@ func main() {
 	checkers := []internalhealth.Checker{
 		internalhealth.NewRedisChecker(redisClient),
 		internalhealth.NewAuditChecker(auditStore),
+		internalhealth.NewReconcilerChecker(reconciler, 2*cfg.ReconciliationInterval),
 	}
 	for _, tenantKM := range tenantReg.AllKeyManagers() {
 		checkers = append(checkers, internalhealth.NewKeyAvailabilityChecker(tenantKM))

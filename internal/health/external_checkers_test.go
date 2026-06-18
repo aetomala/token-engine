@@ -7,6 +7,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/aetomala/jwtauth/pkg/keys"
 	"github.com/aetomala/token-engine/internal/health"
+	"github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -123,6 +124,68 @@ var _ = Describe("KeyAvailabilityChecker", func() {
 				defer cancel()
 
 				Expect(checker.Check(ctx)).NotTo(BeNil())
+			})
+		})
+	})
+})
+
+var _ = Describe("ReconcilerChecker", func() {
+	// ===== PHASE 3: Core Operations =====
+	Describe("Phase 3: ReconcilerChecker", func() {
+		var (
+			ctrl   *gomock.Controller
+			mockRS *testutil.MockReconcilerStatus
+		)
+
+		BeforeEach(func() {
+			ctrl = gomock.NewController(GinkgoT())
+			mockRS = testutil.NewMockReconcilerStatus(ctrl)
+		})
+
+		AfterEach(func() {
+			ctrl.Finish()
+		})
+
+		Context("Name()", func() {
+			It("returns 'reconciler'", func() {
+				checker := health.NewReconcilerChecker(mockRS, time.Minute)
+				Expect(checker.Name()).To(Equal(health.CheckerNameReconciler))
+			})
+		})
+
+		Context("when last pass is within threshold", func() {
+			It("returns nil", func() {
+				checker := health.NewReconcilerChecker(mockRS, time.Minute)
+				mockRS.EXPECT().LastSuccessAt().Return(time.Now())
+
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+
+				Expect(checker.Check(ctx)).To(BeNil())
+			})
+		})
+
+		Context("when last pass is beyond threshold", func() {
+			It("returns a non-nil error", func() {
+				checker := health.NewReconcilerChecker(mockRS, time.Minute)
+				mockRS.EXPECT().LastSuccessAt().Return(time.Now().Add(-10 * time.Minute))
+
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+
+				Expect(checker.Check(ctx)).NotTo(BeNil())
+			})
+		})
+
+		Context("when reconciler is NoOpReconciler", func() {
+			It("always returns nil — no-op is always healthy", func() {
+				noopR := reconciliation.NewNoOpReconciler()
+				checker := health.NewReconcilerChecker(noopR, time.Minute)
+
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+
+				Expect(checker.Check(ctx)).To(BeNil())
 			})
 		})
 	})
