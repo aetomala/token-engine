@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed empty caller registry in `TLS_MODE=disabled` denying every tenant-scoped RPC; when no
+  `TOKEN_ENGINE_CALLER_REGISTRY_PATH` is set, all callers are now permitted and a startup warning
+  is logged — mTLS mode is unaffected and still requires an explicit registry file
+
 ### Added
 
 - Added `NewReconcilerChecker` health check — `/healthz/ready` now reports `reconciler` as

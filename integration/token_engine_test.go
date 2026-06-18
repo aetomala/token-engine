@@ -79,14 +79,10 @@ var _ = BeforeSuite(func() {
 
 	// ===== Interceptors (same order as main.go, otelgrpc skipped — noop OTel not needed) =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
-	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
-		Version: 1,
-		Callers: []registry.CallerEntry{
-			// test-caller is permitted for test-issuer (normal flow) and unknown-tenant
-			// (so the "unknown tenant" integration test reaches the registry and gets NotFound).
-			{Identity: "test-caller", PermittedTenants: []string{"test-issuer", "unknown-tenant"}},
-		},
-	}, logger)
+	// NoOpCallerRegistry mirrors the production TLS-disabled path when no registry file is
+	// configured — all callers are permitted. The unknown-tenant test still reaches the handler
+	// and gets NotFound from the MultiTenantRegistry.
+	callerReg := registry.NewNoOpCallerRegistry()
 
 	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
@@ -202,6 +198,22 @@ var _ = Describe("TokenEngine", func() {
 				})
 
 				Expect(status.Code(err)).To(Equal(codes.NotFound))
+			})
+		})
+
+		Context("when no caller registry file is configured (allow-all registry)", func() {
+			It("permits the caller and returns a token pair", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-allow-all",
+					TenantId: "test-issuer",
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.AccessToken).NotTo(BeEmpty())
+				Expect(resp.RefreshToken).NotTo(BeEmpty())
 			})
 		})
 	})
