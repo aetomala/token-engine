@@ -239,6 +239,7 @@ make coverage       # Run tests with coverage report
 make lint           # go vet + golangci-lint
 make proto-gen      # Regenerate from proto/token_engine.proto (requires buf)
 make ci             # Full CI pipeline: lint + build + test
+make benchmark      # Run RPC latency benchmarks (count=5, ~2 min; see doc/PERFORMANCE.md)
 make docker-build   # Build Docker image locally (uses Podman by default)
 make cd             # Build and push multi-platform image to Docker Hub (requires tag)
 make clean          # Remove binary and coverage files
@@ -283,6 +284,8 @@ See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
 See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) for component model, interceptor chain rationale, and roadmap.
 
 Architecture decisions are recorded in [doc/adr/](doc/adr/).
+
+See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines, mTLS overhead analysis, and regression detection guidance.
 
 ---
 

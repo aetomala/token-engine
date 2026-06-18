@@ -15,6 +15,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the failed check if `CursorReconciler` has not completed a pass within 2× the configured
   `TOKEN_ENGINE_RECONCILIATION_INTERVAL` (default threshold: 10m); `NoOpReconciler` is always
   reported healthy
+- Added `doc/PERFORMANCE.md` — measured RPC latency baseline for all 6 gRPC methods with
+  single-client, mTLS, and 10-concurrent-client scenarios on Apple M4 Max (Go 1.26.4,
+  miniredis); `make benchmark` reproduces the measurements; 15% regression threshold policy
+  included
 
 ---
 
