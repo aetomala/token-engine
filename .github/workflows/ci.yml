@@ -78,6 +78,9 @@ jobs:
       - name: Unit tests (race + coverage)
         run: ginkgo -r --race --cover --coverprofile=coverage.out --randomize-all --fail-on-pending ./internal/...
 
+      - name: Integration tests
+        run: ginkgo --race --randomize-all --fail-on-pending ./integration/
+
       - name: Generate coverage report
         run: go tool cover -html=coverage.out -o coverage.html
 
