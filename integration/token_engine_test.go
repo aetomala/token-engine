@@ -241,7 +241,40 @@ var _ = Describe("TokenEngine", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(refreshed.AccessToken).NotTo(BeEmpty())
-				// RefreshToken handler returns access token only — refresh_token field is not populated
+				Expect(refreshed.RefreshToken).NotTo(BeEmpty())
+			})
+		})
+
+		Context("when chaining successive refresh calls", func() {
+			It("each rotation returns a usable refresh token for the next call", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				issued, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "chain-user",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := authCtx()
+				defer cancel2()
+				first, err := client.RefreshToken(ctx2, &tokenv1.RefreshTokenRequest{
+					RefreshToken: issued.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(first.AccessToken).NotTo(BeEmpty())
+				Expect(first.RefreshToken).NotTo(BeEmpty())
+
+				ctx3, cancel3 := authCtx()
+				defer cancel3()
+				second, err := client.RefreshToken(ctx3, &tokenv1.RefreshTokenRequest{
+					RefreshToken: first.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(second.AccessToken).NotTo(BeEmpty())
+				Expect(second.RefreshToken).NotTo(BeEmpty())
 			})
 		})
 

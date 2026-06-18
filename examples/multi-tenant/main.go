@@ -98,7 +98,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("RefreshToken (alpha): %v", err)
 	}
-	fmt.Printf("[tenant-alpha] refreshed access_token: %s\n\n", alphaRefreshed.GetAccessToken())
+	fmt.Printf("[tenant-alpha] refreshed access_token:  %s\n", alphaRefreshed.GetAccessToken())
+	fmt.Printf("[tenant-alpha] refreshed refresh_token: %s\n\n", alphaRefreshed.GetRefreshToken())
 
 	// ===== RefreshToken — tenant-beta =====
 	betaRefreshed, err := betaClient.RefreshToken(ctx, &tokenv1.RefreshTokenRequest{
@@ -108,7 +109,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("RefreshToken (beta): %v", err)
 	}
-	fmt.Printf("[tenant-beta]  refreshed access_token: %s\n\n", betaRefreshed.GetAccessToken())
+	fmt.Printf("[tenant-beta]  refreshed access_token:  %s\n", betaRefreshed.GetAccessToken())
+	fmt.Printf("[tenant-beta]  refreshed refresh_token: %s\n\n", betaRefreshed.GetRefreshToken())
 
 	// ===== Cross-tenant isolation =====
 	// Present tenant-alpha's refresh token to the alpha server but claim it belongs

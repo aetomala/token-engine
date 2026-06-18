@@ -223,9 +223,10 @@ Describe("Phase 3: RefreshToken", func() {
 	})
 
 	Context("when TenantRegistry.Get returns the Manager and token is valid", func() {
-		It("calls RefreshAccessTokenWithClaims and returns access_token", func() {
+		It("calls RefreshAccessTokenWithClaims and returns a full token pair", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			// Issue a real token pair first
@@ -246,6 +247,7 @@ Describe("Phase 3: RefreshToken", func() {
 			Expect(err).To(BeNil())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.AccessToken).NotTo(BeEmpty())
+			Expect(resp.RefreshToken).NotTo(BeEmpty())
 		})
 	})
 
@@ -396,6 +398,7 @@ Describe("Phase 4: Observability", func() {
 			defer innerCtrl.Finish()
 			mockKM := testutil.NewMockKeyManager(innerCtrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			// Need to issue a token first using a handler with NoOpTracer
 			hNoOp := handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 			manager := buildRealManager(innerCtrl, mockKM)
