@@ -1,4 +1,4 @@
-.PHONY: build test coverage lint proto-gen ci docker-build cd clean examples-build examples-tidy
+.PHONY: build test coverage lint proto-gen ci benchmark docker-build cd clean examples-build examples-tidy
 
 BINARY   := token-engine
 PKG      := ./...
@@ -25,6 +25,9 @@ proto-gen:
 	buf generate
 
 ci: lint build test
+
+benchmark:
+	go test -bench=. -benchmem -run=^$$ -count=5 -timeout=30m ./integration/bench/
 
 docker-build:
 	$(DOCKER) build -t $(IMAGE):$(VERSION) .
