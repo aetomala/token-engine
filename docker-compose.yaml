@@ -7,7 +7,7 @@
 #   podman compose up          # Podman (requires podman-compose or Podman 4.4+)
 #
 # The service builds from the local Dockerfile. To use the published image instead:
-#   image: docker.io/angeltomala/token-engine:v0.8.0
+#   image: docker.io/angeltomala/token-engine:v1.0.0
 #
 # Health probe (from your host, after stack is up):
 #   curl http://localhost:8080/healthz/ready

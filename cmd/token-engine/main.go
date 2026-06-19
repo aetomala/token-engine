@@ -195,7 +195,8 @@ func main() {
 		}
 		callerReg = registry.NewStaticCallerRegistry(callerCfg, logger)
 	} else {
-		callerReg = registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{Version: 1}, logger)
+		logger.Warn(ctx, "no caller registry path configured; all callers are permitted for all tenants — not safe for production")
+		callerReg = registry.NewNoOpCallerRegistry()
 	}
 
 	// ===== Audit and Reconciliation =====
@@ -306,6 +307,7 @@ func main() {
 	checkers := []internalhealth.Checker{
 		internalhealth.NewRedisChecker(redisClient),
 		internalhealth.NewAuditChecker(auditStore),
+		internalhealth.NewReconcilerChecker(reconciler, 2*cfg.ReconciliationInterval),
 	}
 	for _, tenantKM := range tenantReg.AllKeyManagers() {
 		checkers = append(checkers, internalhealth.NewKeyAvailabilityChecker(tenantKM))

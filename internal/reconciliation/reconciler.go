@@ -1,6 +1,9 @@
 package reconciliation
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Reconciler provides the reconciliation interface for background token store reconciliation.
 type Reconciler interface {
@@ -21,4 +24,9 @@ func NewNoOpReconciler() *NoOpReconciler {
 // Run executes a reconciliation pass. Always returns nil immediately without blocking.
 func (r *NoOpReconciler) Run(ctx context.Context) error {
 	return nil
+}
+
+// LastSuccessAt returns the current time — the NoOp reconciler is always considered healthy.
+func (r *NoOpReconciler) LastSuccessAt() time.Time {
+	return time.Now()
 }

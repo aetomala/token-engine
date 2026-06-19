@@ -81,6 +81,7 @@ Describe("Phase 3: IssueToken", func() {
 		It("calls IssueTokenPairWithClaims and returns access_token and refresh_token", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -92,11 +93,14 @@ Describe("Phase 3: IssueToken", func() {
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.AccessToken).NotTo(BeEmpty())
 			Expect(resp.RefreshToken).NotTo(BeEmpty())
+			Expect(resp.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+			Expect(resp.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
 		})
 
 		It("passes WithAudience option when req.Audiences is non-empty", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -115,6 +119,7 @@ Describe("Phase 3: IssueToken", func() {
 		It("passes no WithAudience option when req.Audiences is empty", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -133,6 +138,7 @@ Describe("Phase 3: IssueToken", func() {
 		It("converts req.Claims map[string]string to tokens.CustomClaims", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			mockReg.EXPECT().Get(gomock.Any(), "test-tenant").Return(manager, nil)
@@ -223,9 +229,10 @@ Describe("Phase 3: RefreshToken", func() {
 	})
 
 	Context("when TenantRegistry.Get returns the Manager and token is valid", func() {
-		It("calls RefreshAccessTokenWithClaims and returns access_token", func() {
+		It("calls RefreshAccessTokenWithClaims and returns a full token pair", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(ctrl, mockKM)
 
 			// Issue a real token pair first
@@ -246,6 +253,9 @@ Describe("Phase 3: RefreshToken", func() {
 			Expect(err).To(BeNil())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.AccessToken).NotTo(BeEmpty())
+			Expect(resp.RefreshToken).NotTo(BeEmpty())
+			Expect(resp.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+			Expect(resp.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -253,6 +263,7 @@ Describe("Phase 3: RefreshToken", func() {
 		It("returns codes.PermissionDenied", func() {
 			mockKM := testutil.NewMockKeyManager(ctrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			mockKM.EXPECT().Start(gomock.Any()).Return(nil)
 			mockKM.EXPECT().Shutdown(gomock.Any()).Return(nil).AnyTimes()
 			memStore := storage.NewMemoryRefreshStore(storage.MemoryRefreshStoreConfig{})
@@ -360,6 +371,7 @@ Describe("Phase 4: Observability", func() {
 			defer innerCtrl.Finish()
 			mockKM := testutil.NewMockKeyManager(innerCtrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			manager := buildRealManager(innerCtrl, mockKM)
 
 			mockTracer.EXPECT().Start(gomock.Any(), "IssueToken").Return(ctx, mockSpan)
@@ -396,6 +408,7 @@ Describe("Phase 4: Observability", func() {
 			defer innerCtrl.Finish()
 			mockKM := testutil.NewMockKeyManager(innerCtrl)
 			mockKM.EXPECT().GetCurrentSigningKey(gomock.Any()).Return(privateKey, "key-1", nil).AnyTimes()
+			mockKM.EXPECT().GetPublicKey(gomock.Any(), "key-1").Return(&privateKey.PublicKey, nil).AnyTimes()
 			// Need to issue a token first using a handler with NoOpTracer
 			hNoOp := handler.NewTokenHandler(mockReg, audit.NewNoOpAuditStore(), obs.NewNoOpLogger(), obs.NewNoOpTracer(), obs.NewNoOpMetrics())
 			manager := buildRealManager(innerCtrl, mockKM)

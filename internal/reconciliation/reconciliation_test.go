@@ -64,6 +64,14 @@ var _ = Describe("Reconciler", func() {
 					Expect(err).To(BeNil())
 				})
 			})
+
+			Context("LastSuccessAt", func() {
+				It("returns a time within one second of now — no-op is always healthy", func() {
+					noopSut := NewNoOpReconciler()
+
+					Expect(noopSut.LastSuccessAt()).To(BeTemporally("~", time.Now(), time.Second))
+				})
+			})
 		})
 	})
 
@@ -80,6 +88,15 @@ var _ = Describe("Reconciler", func() {
 		})
 		It("satisfies the Reconciler interface", func() {
 			var _ Reconciler = (*CursorReconciler)(nil)
+		})
+		It("initializes LastSuccessAt to a recent time — startup grace window begins at construction", func() {
+			result := NewCursorReconciler(
+				map[string]tokens.TokenManager{"tenant1": mockTM},
+				mockLocker, redisClient,
+				observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
+				10, 30*time.Second,
+			)
+			Expect(result.LastSuccessAt()).To(BeTemporally("~", time.Now(), time.Second))
 		})
 	})
 
@@ -161,6 +178,28 @@ var _ = Describe("Reconciler", func() {
 				mockLock.EXPECT().Release(gomock.Any()).Return(nil)
 				err := sut.Run(ctx)
 				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("LastSuccessAt after a successful Run", func() {
+			It("advances after Run completes all tenants", func() {
+				sut = NewCursorReconciler(
+					map[string]tokens.TokenManager{"tenant1": mockTM},
+					mockLocker, redisClient,
+					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
+					10, 30*time.Second,
+				)
+				before := sut.LastSuccessAt()
+				mockLocker.EXPECT().Acquire(gomock.Any(), "locks:reconciliation:tenant1", 30*time.Second).Return(mockLock, nil)
+				mockTM.EXPECT().ListTokens(gomock.Any(), "", 10).Return(nil, "", nil)
+				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Return(0, nil)
+				mockLock.EXPECT().Release(gomock.Any()).Return(nil)
+
+				err := sut.Run(ctx)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(sut.LastSuccessAt()).To(BeTemporally(">=", before))
+				Expect(sut.LastSuccessAt()).To(BeTemporally("~", time.Now(), time.Second))
 			})
 		})
 	})

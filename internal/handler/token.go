@@ -57,7 +57,8 @@ func NewTokenHandler(
 	}
 }
 
-// IssueToken issues a new access/refresh token pair for the requesting tenant.
+// IssueToken issues a new access/refresh token pair for the requesting tenant,
+// populating access_token_expires_in and refresh_token_expires_in with seconds-until-expiry.
 func (h *TokenHandler) IssueToken(ctx context.Context, req *tokenv1.IssueTokenRequest) (*tokenv1.TokenPair, error) {
 	// ===== STEP 1: Open span =====
 	ctx, span := h.tracer.Start(ctx, "IssueToken")
@@ -92,11 +93,36 @@ func (h *TokenHandler) IssueToken(ctx context.Context, req *tokenv1.IssueTokenRe
 		return nil, mapped
 	}
 
+	// ===== STEP 6: Recover expiry values =====
+	registered, err := manager.ValidateAccessToken(ctx, access)
+	if err != nil {
+		h.logger.Error(ctx, "failed to validate access token during issuance", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "issuance: access token validation failed")
+	}
+	accessExpiresIn := expiresInSeconds(registered.ExpiresAt.Time)
+
+	refreshMeta, err := manager.IntrospectToken(ctx, refresh)
+	if err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+	refreshExpiresIn := expiresInSeconds(refreshMeta.ExpiresAt)
+
 	span.SetStatus(observability.StatusOK, "")
-	return &tokenv1.TokenPair{AccessToken: access, RefreshToken: refresh}, nil
+	return &tokenv1.TokenPair{
+		AccessToken:           access,
+		RefreshToken:          refresh,
+		AccessTokenExpiresIn:  accessExpiresIn,
+		RefreshTokenExpiresIn: refreshExpiresIn,
+	}, nil
 }
 
-// RefreshToken issues a new access token using a valid refresh token.
+// RefreshToken rotates the access and refresh token pair using a valid refresh token,
+// preserving custom claims on the replacement tokens and populating expiry fields.
 func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTokenRequest) (*tokenv1.TokenPair, error) {
 	// ===== STEP 1: Open span =====
 	ctx, span := h.tracer.Start(ctx, "RefreshToken")
@@ -116,7 +142,7 @@ func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTok
 		customClaims[k] = v
 	}
 
-	// ===== STEP 4: Refresh access token =====
+	// ===== STEP 4: Rotate access token — revokes the presented refresh token atomically =====
 	access, err := manager.RefreshAccessTokenWithClaims(ctx, req.RefreshToken, customClaims)
 	if err != nil {
 		mapped := observability.MapLibraryError(err)
@@ -125,8 +151,42 @@ func (h *TokenHandler) RefreshToken(ctx context.Context, req *tokenv1.RefreshTok
 		return nil, mapped
 	}
 
+	// ===== STEP 5: Recover subject, audience, and access expiry from new access token =====
+	registered, err := manager.ValidateAccessToken(ctx, access)
+	if err != nil {
+		h.logger.Error(ctx, "failed to validate access token during refresh rotation", "error", err)
+		span.RecordError(err)
+		span.SetStatus(observability.StatusError, err.Error())
+		return nil, status.Error(codes.Internal, "refresh rotation: access token validation failed")
+	}
+	accessExpiresIn := expiresInSeconds(registered.ExpiresAt.Time)
+
+	// ===== STEP 6: Issue replacement refresh token with original claims =====
+	refresh, err := manager.IssueRefreshTokenWithClaims(ctx, registered.Subject, customClaims, tokens.WithAudience([]string(registered.Audience)...))
+	if err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+
+	// ===== STEP 7: Recover refresh token expiry =====
+	refreshMeta, err := manager.IntrospectToken(ctx, refresh)
+	if err != nil {
+		mapped := observability.MapLibraryError(err)
+		span.RecordError(mapped)
+		span.SetStatus(observability.StatusError, mapped.Error())
+		return nil, mapped
+	}
+	refreshExpiresIn := expiresInSeconds(refreshMeta.ExpiresAt)
+
 	span.SetStatus(observability.StatusOK, "")
-	return &tokenv1.TokenPair{AccessToken: access}, nil
+	return &tokenv1.TokenPair{
+		AccessToken:           access,
+		RefreshToken:          refresh,
+		AccessTokenExpiresIn:  accessExpiresIn,
+		RefreshTokenExpiresIn: refreshExpiresIn,
+	}, nil
 }
 
 // RevokeToken revokes a specific refresh token by resolving its token ID and revoking it.
@@ -349,4 +409,14 @@ func (h *TokenHandler) RevokeAllForUserAndAudience(ctx context.Context, req *tok
 	// ===== STEP 6: Success =====
 	span.SetStatus(observability.StatusOK, "")
 	return &tokenv1.RevokeTokenResponse{}, nil
+}
+
+// expiresInSeconds returns the number of whole seconds until t, clamped to zero
+// for times already in the past.
+func expiresInSeconds(t time.Time) int64 {
+	d := time.Until(t)
+	if d <= 0 {
+		return 0
+	}
+	return int64(d.Seconds())
 }

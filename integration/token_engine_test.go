@@ -79,14 +79,10 @@ var _ = BeforeSuite(func() {
 
 	// ===== Interceptors (same order as main.go, otelgrpc skipped — noop OTel not needed) =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
-	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
-		Version: 1,
-		Callers: []registry.CallerEntry{
-			// test-caller is permitted for test-issuer (normal flow) and unknown-tenant
-			// (so the "unknown tenant" integration test reaches the registry and gets NotFound).
-			{Identity: "test-caller", PermittedTenants: []string{"test-issuer", "unknown-tenant"}},
-		},
-	}, logger)
+	// NoOpCallerRegistry mirrors the production TLS-disabled path when no registry file is
+	// configured — all callers are permitted. The unknown-tenant test still reaches the handler
+	// and gets NotFound from the MultiTenantRegistry.
+	callerReg := registry.NewNoOpCallerRegistry()
 
 	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
@@ -160,6 +156,8 @@ var _ = Describe("TokenEngine", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.AccessToken).NotTo(BeEmpty())
 				Expect(resp.RefreshToken).NotTo(BeEmpty())
+				Expect(resp.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+				Expect(resp.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
 			})
 		})
 
@@ -204,6 +202,22 @@ var _ = Describe("TokenEngine", func() {
 				Expect(status.Code(err)).To(Equal(codes.NotFound))
 			})
 		})
+
+		Context("when no caller registry file is configured (allow-all registry)", func() {
+			It("permits the caller and returns a token pair", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-allow-all",
+					TenantId: "test-issuer",
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.AccessToken).NotTo(BeEmpty())
+				Expect(resp.RefreshToken).NotTo(BeEmpty())
+			})
+		})
 	})
 
 	// ===== RefreshToken =====
@@ -229,7 +243,42 @@ var _ = Describe("TokenEngine", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(refreshed.AccessToken).NotTo(BeEmpty())
-				// RefreshToken handler returns access token only — refresh_token field is not populated
+				Expect(refreshed.RefreshToken).NotTo(BeEmpty())
+				Expect(refreshed.AccessTokenExpiresIn).To(BeNumerically(">", 0))
+				Expect(refreshed.RefreshTokenExpiresIn).To(BeNumerically(">", 0))
+			})
+		})
+
+		Context("when chaining successive refresh calls", func() {
+			It("each rotation returns a usable refresh token for the next call", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				issued, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "chain-user",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := authCtx()
+				defer cancel2()
+				first, err := client.RefreshToken(ctx2, &tokenv1.RefreshTokenRequest{
+					RefreshToken: issued.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(first.AccessToken).NotTo(BeEmpty())
+				Expect(first.RefreshToken).NotTo(BeEmpty())
+
+				ctx3, cancel3 := authCtx()
+				defer cancel3()
+				second, err := client.RefreshToken(ctx3, &tokenv1.RefreshTokenRequest{
+					RefreshToken: first.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(second.AccessToken).NotTo(BeEmpty())
+				Expect(second.RefreshToken).NotTo(BeEmpty())
 			})
 		})
 

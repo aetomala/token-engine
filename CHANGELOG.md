@@ -7,7 +7,39 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [v1.0.0] — 2026-06-18
+
+### Fixed
+
+- Fixed empty caller registry in `TLS_MODE=disabled` denying every tenant-scoped RPC; when no
+  `TOKEN_ENGINE_CALLER_REGISTRY_PATH` is set, all callers are now permitted and a startup warning
+  is logged — mTLS mode is unaffected and still requires an explicit registry file
+- Fixed `RefreshToken` returning an empty `refresh_token` — the RPC now performs true token
+  rotation, issuing a replacement refresh token alongside the new access token so clients can
+  chain successive refresh calls without re-authenticating
+- Fixed `IssueToken` and `RefreshToken` returning always-zero `access_token_expires_in` and
+  `refresh_token_expires_in` — both RPCs now populate the fields with seconds-until-expiry
+  derived from the issued tokens
+- Fixed `tenant_id` in the README Quick Start client snippet (`"tenant-abc"` → `"my-service"`),
+  `examples/grpc-client`, and `examples/mtls-client` (`"default"` → reads from
+  `TOKEN_ENGINE_ISSUER` env var, defaulting to `"local-dev"`); API reference for `IssueToken`
+  now documents that `tenant_id` must equal the server's `TOKEN_ENGINE_ISSUER`
+
+### Chore
+
+- Integration test suite (`./integration/`) added to CI and `make test`; provides a smoke test
+  that asserts `IssueToken` succeeds end-to-end on every PR
+
+### Added
+
+- Added `NewReconcilerChecker` health check — `/healthz/ready` now reports `reconciler` as
+  the failed check if `CursorReconciler` has not completed a pass within 2× the configured
+  `TOKEN_ENGINE_RECONCILIATION_INTERVAL` (default threshold: 10m); `NoOpReconciler` is always
+  reported healthy
+- Added `doc/PERFORMANCE.md` — measured RPC latency baseline for all 6 gRPC methods with
+  single-client, mTLS, and 10-concurrent-client scenarios on Apple M4 Max (Go 1.26.4,
+  miniredis); `make benchmark` reproduces the measurements; 15% regression threshold policy
+  included
 
 ---
 

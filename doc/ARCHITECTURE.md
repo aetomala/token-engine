@@ -210,6 +210,7 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | v0.7 | ✅ Complete | jwtauth v0.7.2 → v1.0.0; `NoOpLocker` + `NoOpLock`; ADR-002–006 corrected; operator guide RPC list fixed |
 | v0.8 | ✅ Complete | `client/` Go SDK; `examples/grpc-client` + `examples/mtls-client`; ADR-007–010; `doc/MIGRATION.md`; `doc/` consolidation; METRICS.md promoted `token_engine_jwks_key_count` |
 | v0.9 | ✅ Complete | `docker-compose.yaml` for local development; `examples/custom-claims` + `examples/multi-tenant`; all four examples restructured as independent Go modules with per-example READMEs |
+| v1.0 | ✅ Complete | Pre-1.0 correctness audit: true refresh token rotation; populated `access_token_expires_in` / `refresh_token_expires_in`; `NewReconcilerChecker` health check; `PERFORMANCE.md` RPC latency baseline; empty caller registry permitting in `TLS_MODE=disabled` |
 
 ---
 

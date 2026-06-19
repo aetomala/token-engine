@@ -1,8 +1,8 @@
-.PHONY: build test coverage lint proto-gen ci docker-build cd clean examples-build examples-tidy
+.PHONY: build test coverage lint proto-gen ci benchmark docker-build cd clean examples-build examples-tidy
 
 BINARY   := token-engine
 PKG      := ./...
-TEST_PKG := ./internal/... ./client/...
+TEST_PKG := ./internal/... ./client/... ./integration/
 IMAGE    := angeltomala/token-engine
 VERSION  := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
 DOCKER   := podman
@@ -25,6 +25,9 @@ proto-gen:
 	buf generate
 
 ci: lint build test
+
+benchmark:
+	go test -bench=. -benchmem -run=^$$ -count=5 -timeout=30m ./integration/bench/
 
 docker-build:
 	$(DOCKER) build -t $(IMAGE):$(VERSION) .
