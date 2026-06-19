@@ -177,3 +177,78 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
 - Renamed span attributes produce silent gaps in tracing dashboards — old queries return no
   data for spans emitted after the upgrade.
 - Stale mock interfaces cause compilation failures if regeneration is skipped.
+
+---
+
+## v0.7.0 → v0.8.0
+
+### What changed
+
+- `client/` Go SDK package added — callers can now import `github.com/aetomala/token-engine/client`
+  instead of raw generated stubs.
+- `examples/grpc-client` and `examples/mtls-client` added as reference clients.
+- Documentation consolidated — `docs/` merged into `doc/`; `doc/MIGRATION.md` added;
+  ADR-007 through ADR-010 filed.
+
+### Required actions
+
+None. No environment variables changed, no behavioral changes.
+
+### Consequences if skipped
+
+None.
+
+---
+
+## v0.8.0 → v0.9.0
+
+### What changed
+
+- `docker-compose.yaml` added — single-command local stack (`docker compose up`).
+- `examples/custom-claims` and `examples/multi-tenant` added as runnable reference programs.
+- All four examples restructured as independent Go modules with per-example READMEs.
+
+### Required actions
+
+None. No environment variables changed, no behavioral changes.
+
+### Consequences if skipped
+
+None.
+
+---
+
+## v0.9.0 → v1.0.0
+
+### What changed
+
+- **`RefreshToken` RPC now returns a replacement `refresh_token`.** Previously the field was
+  always empty — the presented refresh token was revoked and no replacement was issued, locking
+  the client out after one refresh call. From v1.0.0 the RPC performs true token rotation: the
+  response `refresh_token` holds the next refresh token and the presented one is atomically
+  revoked.
+- **`IssueToken` and `RefreshToken` now populate `access_token_expires_in` and
+  `refresh_token_expires_in`** with seconds-until-expiry. Both fields were always zero in
+  earlier releases.
+- **`TLS_MODE=disabled` no longer requires `TOKEN_ENGINE_CALLER_REGISTRY_PATH`.** When no
+  registry file is configured in disabled-TLS mode, all callers are permitted and a startup
+  warning is logged. In v0.9.0 and earlier an unconfigured registry caused `PermissionDenied`
+  on every tenant-scoped RPC.
+- **New `/healthz/ready` check: `reconciler`.** `NewReconcilerChecker` reports unhealthy if
+  `CursorReconciler` has not completed a pass within 2× `TOKEN_ENGINE_RECONCILIATION_INTERVAL`
+  (default threshold: 10 minutes). Health-check automation that parses check names in the
+  `503` body should add `reconciler` to the expected set.
+
+### Required actions
+
+1. **Update clients to consume the `refresh_token` field from `RefreshToken` responses.**
+   Clients that ignored the field (because it was always empty) must now read and store it —
+   the returned token is the only valid refresh token for the next rotation.
+2. **Verify health-check automation.** If any alerting rule or readiness probe asserts a fixed
+   set of check names in the `/healthz/ready` body, add `reconciler` to the expected set.
+
+### Consequences if skipped
+
+- Clients that discard `RefreshToken`'s `refresh_token` response field will lose their refresh
+  token after each call, requiring re-authentication via `IssueToken`.
+- Health alerting that expects exactly the pre-v1.0 set of check names may fire false positives.

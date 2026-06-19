@@ -274,7 +274,7 @@ make ci
 Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
 
 ```bash
-docker pull docker.io/angeltomala/token-engine:v0.9.0
+docker pull docker.io/angeltomala/token-engine:v1.0.0
 ```
 
 See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
@@ -304,6 +304,7 @@ See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines,
 | v0.7 | ✅ Complete | jwtauth v1.0.0 upgrade (per-tenant Redis key namespace isolation), `NoOpLocker` + `NoOpLock` test utilities, ADR-003 through ADR-006 corrections |
 | v0.8 | ✅ Complete | `doc/MIGRATION.md` per-version upgrade guide, `client/` Go SDK package, `examples/grpc-client` + `examples/mtls-client`, ADR-007 through ADR-010 filed, `docs/` consolidated into `doc/` |
 | v0.9 | ✅ Complete | `docker-compose.yaml` single-command local stack, `examples/custom-claims` + `examples/multi-tenant`, all four examples as independent Go modules with per-example READMEs |
+| v1.0 | ✅ Complete | Production readiness — true refresh token rotation, populated `access_token_expires_in` / `refresh_token_expires_in`, `NewReconcilerChecker` for `/healthz/ready`, `PERFORMANCE.md` RPC latency baseline, pre-1.0 correctness audit |
 
 ---
 
