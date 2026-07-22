@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed inconsistent gRPC error codes for an invalid `tenant_id` — the validation interceptor
+  now rejects an empty `tenant_id` with `codes.InvalidArgument` for every tenant-scoped RPC
+  before caller authorization or the registry are reached, instead of surfacing as
+  `codes.PermissionDenied` or `codes.InvalidArgument` depending on which downstream check ran
+  first
+
 ## [v1.0.0] — 2026-06-18
 
 ### Fixed
