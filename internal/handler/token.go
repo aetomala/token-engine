@@ -395,9 +395,12 @@ func (h *TokenHandler) RevokeAllForUserAndAudience(ctx context.Context, req *tok
 
 	// ===== STEP 5: Record audit event =====
 	event := audit.RevocationEvent{
-		TenantID: tenantID,
-		Target:   req.UserId,
-		Scope:    audit.RevocationScopeUser,
+		TenantID:       tenantID,
+		CallerIdentity: observability.CallerIdentityFromContext(ctx),
+		TokenID:        "",
+		Target:         req.UserId,
+		Scope:          audit.RevocationScopeUserAudience,
+		OccurredAt:     time.Now().UTC(),
 	}
 	if err := h.auditStore.RecordRevocation(ctx, event); err != nil {
 		h.logger.Error(ctx, "failed to record revocation audit", "error", err)

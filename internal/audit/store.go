@@ -18,18 +18,19 @@ type Store interface {
 
 // Sentinel scope values for RevocationEvent.Scope.
 const (
-	RevocationScopeToken    = "token"
-	RevocationScopeAudience = "audience"
-	RevocationScopeUser     = "user"
+	RevocationScopeToken        = "token"
+	RevocationScopeAudience     = "audience"
+	RevocationScopeUser         = "user"
+	RevocationScopeUserAudience = "user_audience"
 )
 
 // RevocationEvent captures a token revocation event for audit logging.
 type RevocationEvent struct {
 	TenantID       string
 	CallerIdentity string
-	TokenID        string    // populated for Scope="token"; "" otherwise
-	Target         string    // populated for Scope="audience" (audience value) and Scope="user" (user ID); "" for Scope="token"
-	Scope          string    // "token", "audience", "user"
+	TokenID        string // populated for Scope="token"; "" otherwise
+	Target         string // populated for Scope="audience" (audience value) and Scope="user"/"user_audience" (user ID); "" for Scope="token"
+	Scope          string // "token", "audience", "user", "user_audience"
 	OccurredAt     time.Time
 }
 
