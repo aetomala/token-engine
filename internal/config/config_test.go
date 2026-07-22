@@ -219,6 +219,24 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Context("TOKEN_ENGINE_STATIC_CALLER_KEYS value contains '=' padding", func() {
+		It("preserves the key verbatim and parses the correct identity", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "c2VjcmV0Zm9v===caller-a")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.StaticCallerKeys).To(Equal(map[string]string{
+				"c2VjcmV0Zm9v==": "caller-a",
+			}))
+
+			cleanupEnvVars()
+		})
+	})
+
 	Context("all required fields set", func() {
 		It("returns a fully populated Config without error", func() {
 			setRequiredEnvVars()

@@ -19,6 +19,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Fixed `RevokeAllForUserAndAudience` audit events missing `caller_identity` and `occurred_at`,
   and reusing the same scope as a full user revocation — the event now records the caller and
   timestamp like its sibling revocation handlers, and uses a distinct `user_audience` scope
+- Fixed `TOKEN_ENGINE_STATIC_CALLER_KEYS` rejecting API keys containing `=` (including base64
+  keys with `=` padding) — pairs are now split at the last `=`, so the key may contain `=`
+  characters while the identity is read verbatim after the final delimiter
 
 ## [v1.0.0] — 2026-06-18
 

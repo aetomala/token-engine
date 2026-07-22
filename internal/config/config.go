@@ -191,12 +191,14 @@ func Load() (*Config, error) {
 	if staticCallerKeysEnv != "" {
 		pairs := strings.Split(staticCallerKeysEnv, ",")
 		for _, pair := range pairs {
-			parts := strings.Split(pair, "=")
-			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			// Split at the last '=' so a key containing '=' (e.g. base64 padding)
+			// is preserved verbatim; the identity is read after the final delimiter.
+			idx := strings.LastIndex(pair, "=")
+			if idx <= 0 || idx == len(pair)-1 {
 				log.Printf("TOKEN_ENGINE_STATIC_CALLER_KEYS format error: must be 'key1=identity1,key2=identity2'")
 				os.Exit(1)
 			}
-			staticCallerKeys[parts[0]] = parts[1]
+			staticCallerKeys[pair[:idx]] = pair[idx+1:]
 		}
 	}
 	if c.TLSMode == "disabled" && len(staticCallerKeys) == 0 {
