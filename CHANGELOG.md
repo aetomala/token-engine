@@ -16,6 +16,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   before caller authorization or the registry are reached, instead of surfacing as
   `codes.PermissionDenied` or `codes.InvalidArgument` depending on which downstream check ran
   first
+- Fixed `RevokeAllForUserAndAudience` audit events missing `caller_identity` and `occurred_at`,
+  and reusing the same scope as a full user revocation — the event now records the caller and
+  timestamp like its sibling revocation handlers, and uses a distinct `user_audience` scope
 
 ## [v1.0.0] — 2026-06-18
 
