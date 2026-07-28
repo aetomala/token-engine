@@ -5,7 +5,7 @@
 [![Go 1.26+](https://img.shields.io/badge/go-1.26+-blue.svg)](https://go.dev/dl/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v1.0.0 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
+A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v1.0.0 and exposes stateful JWT token management as a network API — observable, horizontally scalable, and tenant-isolated.
 
 ---
 
@@ -24,6 +24,14 @@ A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala
 OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN) → Caller authorization → Idempotency → Request validation
 
 **Observability:** Prometheus metrics at `/metrics`, OpenTelemetry traces via OTLP, structured slog logging with correlation IDs, health probes at `/healthz/live` and `/healthz/ready`.
+
+---
+
+## Tenancy Model
+
+Each running instance serves exactly one tenant, fixed at startup by `TOKEN_ENGINE_ISSUER` — a client's `tenant_id` must equal that value. Multi-tenancy is achieved by running multiple instances against a shared Redis, one per tenant, each isolated by tenant ID as both the Redis key prefix and the jwtauth library namespace. See [`examples/multi-tenant`](examples/multi-tenant) for a working two-instance reference.
+
+`internal/registry.MultiTenantRegistry` internally supports `Add`/`Drain`/`Remove` for runtime tenant lifecycle, but these are not exposed through any RPC or admin endpoint today — the shipped service calls `Add` once at startup for the single configured tenant and never calls `Drain` or `Remove`. Onboarding a new tenant currently requires starting a new instance, not registering one into a running process.
 
 ---
 
