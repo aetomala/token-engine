@@ -34,6 +34,12 @@ type tenantEntry struct {
 // It supports runtime Add/Drain/Remove lifecycle for per-tenant token manager stacks.
 // Each tenant gets an isolated key prefix, library namespace, and Prometheus metric namespace.
 // All methods are safe for concurrent use.
+//
+// Add, Drain, and Remove are internal runtime-lifecycle primitives — no RPC or admin
+// endpoint calls them today. The shipped service calls Add once at startup for the
+// single tenant configured via TOKEN_ENGINE_ISSUER and never calls Drain or Remove;
+// multi-tenancy is achieved by running one process per tenant, not by onboarding
+// tenants into a running instance. See the README's Tenancy Model section.
 type MultiTenantRegistry struct {
 	client  *redis.Client
 	promReg *prometheus.Registry

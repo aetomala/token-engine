@@ -29,6 +29,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keys with `=` padding) — pairs are now split at the last `=`, so the key may contain `=`
   characters while the identity is read verbatim after the final delimiter
 
+### Documentation
+
+- Corrected the README and ARCHITECTURE.md "multi-tenant" framing to describe the shipped
+  model accurately — one tenant per process, multi-tenancy achieved by running multiple
+  instances (see `examples/multi-tenant`); `MultiTenantRegistry.Add`/`Drain`/`Remove` are
+  documented as internal primitives with no exposed runtime caller today
+
 ## [v1.0.0] — 2026-06-18
 
 ### Fixed

@@ -2,9 +2,9 @@
 
 ## Overview
 
-token-engine is a gRPC service that exposes [jwtauth](https://github.com/aetomala/jwtauth) — a stateful JWT authorization library — as a multi-tenant network API. Its design goals are:
+token-engine is a gRPC service that exposes [jwtauth](https://github.com/aetomala/jwtauth) — a stateful JWT authorization library — as a network API. Its design goals are:
 
-- **Thin service layer.** All token business logic lives in jwtauth. token-engine is responsible only for transport, multi-tenancy, authentication, observability, and lifecycle management.
+- **Thin service layer.** All token business logic lives in jwtauth. token-engine is responsible only for transport, tenant isolation, authentication, observability, and lifecycle management.
 - **Observability-first.** Every request produces a trace span, increments counters, and emits structured log entries. All three signals are injectable — components never construct their own observability primitives.
 - **Progressive implementation.** v0.1 establishes the full service skeleton with NoOp stubs for components that require Redis. Each deferred feature has an interface seam and a NoOp implementation — the service runs correctly without the feature present, and the feature can be wired in later without API changes.
 
@@ -155,6 +155,8 @@ Components with interface seams produce correct behavior (no panics, no errors) 
 | Dynamic tenant registry | `registry.TenantRegistry` | `MultiTenantRegistry` | Live — v0.5 — [ADR-007](adr/ADR-007-multi-tenant-registry.md) |
 | Idempotency store | `store.IdempotencyStore` | `RedisIdempotencyStore` (24h TTL default) | Live — v0.4 |
 | Caller registry | `registry.CallerRegistry` | `StaticCallerRegistry` (YAML-backed) | Live — v0.5 |
+
+`MultiTenantRegistry`'s `Add` is called once at startup for the single tenant configured via `TOKEN_ENGINE_ISSUER`; `Drain` and `Remove` have no caller in the shipped service — runtime tenant lifecycle is not exposed through any RPC or admin endpoint today. See [Tenancy Model](../README.md#tenancy-model) in the README.
 
 ---
 
