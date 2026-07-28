@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `config.Load()` now returns descriptive sentinel errors for all validation failures instead
+  of calling `os.Exit` directly; `main()` retains sole responsibility for deciding whether to
+  exit on a config error
+
 ### Fixed
 
 - Fixed inconsistent gRPC error codes for an invalid `tenant_id` — the validation interceptor
