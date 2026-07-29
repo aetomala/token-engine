@@ -41,7 +41,6 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH")
 		os.Unsetenv("TOKEN_ENGINE_LOCK_TTL")
 		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
-		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
 		os.Unsetenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
 	}
 
@@ -455,47 +454,6 @@ var _ = Describe("Config", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.ReconciliationInterval).To(Equal(5 * time.Minute))
-
-			cleanupEnvVars()
-		})
-	})
-
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE set to valid integer", func() {
-		It("parses and stores the value", func() {
-			setRequiredEnvVars()
-			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "50")
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(50))
-
-			cleanupEnvVars()
-		})
-	})
-
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE absent", func() {
-		It("uses default of 100", func() {
-			setRequiredEnvVars()
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(100))
-
-			cleanupEnvVars()
-		})
-	})
-
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse failure", func() {
-		It("logs warning and uses default 100", func() {
-			setRequiredEnvVars()
-			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "notanint")
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(100))
 
 			cleanupEnvVars()
 		})

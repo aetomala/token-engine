@@ -110,7 +110,6 @@ All configuration is via environment variables. The service exits fatally at sta
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | string | `` | no-op tracer (no traces) |
 | `TOKEN_ENGINE_LOCK_TTL` | duration | `30s` | warning + default |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | duration | `5m` | warning + default |
-| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | int | `100` | warning + default |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | duration | `1m` | warning + default |
 
 **`TOKEN_ENGINE_STATIC_CALLER_KEYS` format:** `apikey1=caller-identity-1,apikey2=caller-identity-2`

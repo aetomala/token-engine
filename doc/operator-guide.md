@@ -37,7 +37,6 @@ All configuration is read from environment variables at startup. Missing require
 | `TOKEN_ENGINE_IDEMPOTENCY_TTL` | `24h` | Idempotency key TTL in Redis. Must be at least 2x the caller's maximum retry duration. |
 | `TOKEN_ENGINE_LOCK_TTL` | `30s` | TTL for all distributed lock keys. Must be long enough for a full key rotation write under degraded Redis. |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | `5m` | Time between reconciliation passes. |
-| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | `100` | Tokens fetched per `ListTokens` page during reconciliation. |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | `1m` | Minimum elapsed time since last key generation before a new rotation is attempted. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTLP gRPC endpoint for trace export. Tracing is disabled when empty. |
 | `TOKEN_ENGINE_CALLER_REGISTRY_PATH` | _(empty)_ | Path to caller registry YAML. All callers are permitted when empty. |

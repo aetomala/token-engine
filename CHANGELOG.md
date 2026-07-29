@@ -14,9 +14,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `config.Load()` now returns descriptive sentinel errors for all validation failures instead
   of calling `os.Exit` directly; `main()` retains sole responsibility for deciding whether to
   exit on a config error
+- Removed `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` — the reconciler no longer paginates through
+  tokens (see [ADR-011](doc/adr/ADR-011-cursor-based-reconciler.md) Outcome); the env var is no
+  longer read
 
 ### Fixed
 
+- Fixed the reconciler calling `CleanupExpiredTokens` once per `ListTokens` page instead of
+  once per tenant per pass — `CleanupExpiredTokens` is a full keyspace scan independent of
+  pagination, so a tenant with N pages triggered N redundant full scans per reconciliation run
 - Fixed inconsistent gRPC error codes for an invalid `tenant_id` — the validation interceptor
   now rejects an empty `tenant_id` with `codes.InvalidArgument` for every tenant-scoped RPC
   before caller authorization or the registry are reached, instead of surfacing as
