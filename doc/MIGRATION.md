@@ -161,6 +161,11 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
   keys — tracing dashboards querying jwtauth-origin span attributes require updating.
 - `tokens.Manager` interface grows from 19 to 20 methods — regenerate mocks if maintaining
   custom mocks of this interface.
+- **Redis key namespace isolation:** `RedisKeyStoreConfig` and `RedisRefreshStoreConfig` now
+  wire the `Namespace` field from `TOKEN_ENGINE_ISSUER` — JWKS and refresh token Redis keys
+  are now namespaced by tenant ID.
+- `NoOpLocker` and `NoOpLock` added to `internal/lock` as test utilities only — no effect on
+  production deployments.
 - No new environment variables.
 
 ### Required actions
@@ -171,12 +176,17 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
 3. Snapshot Prometheus metrics before and after upgrade in staging to catch any renames
    (pre-upgrade runbook §4).
 4. Update tracing dashboards for any renamed jwtauth span attribute keys.
+5. Plan a brief re-authentication window when rolling out to a live deployment (see
+   Consequences below).
 
 ### Consequences if skipped
 
 - Renamed span attributes produce silent gaps in tracing dashboards — old queries return no
   data for spans emitted after the upgrade.
 - Stale mock interfaces cause compilation failures if regeneration is skipped.
+- Existing Redis refresh token and JWKS keys were written without a namespace prefix prior to
+  v0.7.0. After upgrading, token-engine looks for them under the new namespaced prefix and will
+  not find the old keys — callers receive token-not-found errors and must re-issue tokens.
 
 ---
 

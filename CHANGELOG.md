@@ -37,6 +37,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   documented as internal primitives with no exposed runtime caller today
 - Replaced deprecated `grpc.Dial` with `grpc.NewClient` in the README's client connection
   snippet, consistent with `client/client.go`
+- Consolidated `UPGRADING.md` and `doc/MIGRATION.md` into a single canonical upgrade guide
+  (`doc/MIGRATION.md`) — merged the Redis key namespace isolation consequence and
+  `NoOpLocker`/`NoOpLock` note from `UPGRADING.md`'s v0.6.0→v0.7.0 section, then removed the
+  orphaned `UPGRADING.md`
 
 ## [v1.0.0] — 2026-06-18
 
