@@ -71,7 +71,7 @@ The gRPC server starts on `:9090` and the HTTP server (health + metrics) on `:80
 
 **Connect a client:**
 ```go
-conn, err := grpc.Dial(":9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+conn, err := grpc.NewClient(":9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := tokenv1.NewTokenEngineClient(conn)
 
 resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
