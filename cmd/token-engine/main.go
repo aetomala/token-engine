@@ -206,10 +206,8 @@ func main() {
 	reconciler := reconciliation.NewCursorReconciler(
 		allManagers,
 		locker,
-		redisClient,
 		logger,
 		metrics,
-		cfg.ReconciliationPageSize,
 		cfg.LockTTL,
 	)
 

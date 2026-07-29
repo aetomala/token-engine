@@ -33,8 +33,6 @@ spec:
               value: "30s"
             - name: TOKEN_ENGINE_RECONCILIATION_INTERVAL
               value: "5m"
-            - name: TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE
-              value: "100"
             - name: TOKEN_ENGINE_ROTATION_WINDOW_GUARD
               value: "1m"
           startupProbe:

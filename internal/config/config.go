@@ -134,11 +134,6 @@ type Config struct {
 	// parse failure — log warning, use default
 	ReconciliationInterval time.Duration
 
-	// ReconciliationPageSize is the number of tokens fetched per ListTokens page.
-	// env: TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE; default: 100
-	// parse failure — log warning, use default
-	ReconciliationPageSize int
-
 	// RotationWindowGuard is the minimum time since last key generation before a new key is generated.
 	// env: TOKEN_ENGINE_ROTATION_WINDOW_GUARD; default: 1 * time.Minute
 	// parse failure — log warning, use default
@@ -174,7 +169,6 @@ func Load() (*Config, error) {
 	jwksCacheMaxAgeEnv := os.Getenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
 	lockTTLEnv := os.Getenv("TOKEN_ENGINE_LOCK_TTL")
 	reconciliationIntervalEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
-	reconciliationPageSizeEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
 	rotationWindowGuardEnv := os.Getenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
 
 	// ===== STEP 2: Fatal validations (before any defaults) =====
@@ -365,18 +359,6 @@ func Load() (*Config, error) {
 			c.RedisDB = 0
 		} else {
 			c.RedisDB = db
-		}
-	}
-
-	if reconciliationPageSizeEnv == "" {
-		c.ReconciliationPageSize = 100
-	} else {
-		pageSize, err := strconv.Atoi(reconciliationPageSizeEnv)
-		if err != nil {
-			log.Printf("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse error: %v; using default 100", err)
-			c.ReconciliationPageSize = 100
-		} else {
-			c.ReconciliationPageSize = pageSize
 		}
 	}
 

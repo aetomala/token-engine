@@ -166,6 +166,5 @@ interpreting the metrics above.
 |---|---|---|---|
 | `TOKEN_ENGINE_LOCK_TTL` | `30s` | _(no dedicated metric)_ | TTL for distributed lock keys; controls how long key rotation and reconciliation are mutually exclusive across replicas |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | `5m` | _(no dedicated metric)_ | Time between reconciliation passes; affects how quickly stale refresh tokens are purged |
-| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | `100` | _(no dedicated metric)_ | Tokens fetched per page during reconciliation; large values increase Redis scan duration per pass |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | `1m` | `token_engine_jwks_key_count` | Minimum time between key rotations; a count of 1 near a rotation boundary is expected behavior, not a fault |
 

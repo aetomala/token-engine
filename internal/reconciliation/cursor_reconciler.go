@@ -8,17 +8,22 @@ import (
 	"github.com/aetomala/jwtauth/pkg/tokens"
 	"github.com/aetomala/token-engine/internal/lock"
 	"github.com/aetomala/token-engine/internal/observability"
-	"github.com/redis/go-redis/v9"
 )
 
 const (
 	lockKeyReconciliationPrefix = "locks:reconciliation:"
-	cursorKeyPrefix             = "reconciliation:cursor:"
 )
 
-// CursorReconciler is a cursor-based best-effort reconciler that processes tokens per tenant
-// using distributed locks to prevent concurrent reconciliation passes. All methods are safe
-// for concurrent use.
+// CursorReconciler is a best-effort reconciler that runs a single expired-token cleanup pass
+// per tenant per Run, using a per-tenant distributed lock to prevent concurrent reconciliation
+// passes across replicas. All methods are safe for concurrent use.
+//
+// The name is retained from ADR-011's original cursor-based, per-token design — that design
+// specified paging through each tenant's tokens and revoking ones with no corresponding
+// idempotency record. That per-token orphan detection was never implemented; see ADR-011's
+// Outcome section for why. This implementation calls TokenManager.CleanupExpiredTokens once
+// per tenant per pass, which is itself a self-contained full-namespace scan independent of
+// any pagination.
 type CursorReconciler struct {
 	// ===== Observability =====
 	logger  observability.Logger
@@ -27,11 +32,9 @@ type CursorReconciler struct {
 	// ===== Dependencies =====
 	managers map[string]tokens.TokenManager
 	locker   lock.Locker
-	redis    *redis.Client
 
 	// ===== Config =====
-	pageSize int
-	lockTTL  time.Duration
+	lockTTL time.Duration
 
 	// ===== State =====
 	lastSuccessAt atomic.Int64 // Unix nanos of the last successful Run pass.
@@ -44,19 +47,15 @@ var _ Reconciler = (*CursorReconciler)(nil)
 func NewCursorReconciler(
 	managers map[string]tokens.TokenManager,
 	locker lock.Locker,
-	redisClient *redis.Client,
 	logger observability.Logger,
 	metrics observability.Metrics,
-	pageSize int,
 	lockTTL time.Duration,
 ) *CursorReconciler {
 	r := &CursorReconciler{
 		managers: managers,
 		locker:   locker,
-		redis:    redisClient,
 		logger:   logger,
 		metrics:  metrics,
-		pageSize: pageSize,
 		lockTTL:  lockTTL,
 	}
 	r.lastSuccessAt.Store(time.Now().UnixNano())
@@ -69,11 +68,11 @@ func (r *CursorReconciler) LastSuccessAt() time.Time {
 	return time.Unix(0, r.lastSuccessAt.Load())
 }
 
-// Run executes a single reconciliation pass over all tenants. It acquires a per-tenant
-// distributed lock before processing and uses a Redis-persisted cursor to resume paginated
-// ListTokens calls across restarts. On successful completion of the full pass, lastSuccessAt
-// is updated so health checks can observe liveness.
-// Returns the context error if the context is cancelled before all tenants are processed.
+// Run executes a single reconciliation pass over all tenants, cleaning up expired tokens for
+// each under a per-tenant distributed lock. On successful completion of the full pass,
+// lastSuccessAt is updated so health checks can observe liveness.
+// Returns nil if the context is cancelled before all tenants are processed — cancellation is
+// not treated as an error since the next pass covers any tenants skipped by this one.
 func (r *CursorReconciler) Run(ctx context.Context) error {
 	for tenantID := range r.managers {
 		select {
@@ -97,27 +96,7 @@ func (r *CursorReconciler) processTenant(ctx context.Context, tenantID string) {
 	}
 	defer lk.Release(ctx) //nolint:errcheck
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		cursor, _ := r.redis.Get(ctx, cursorKeyPrefix+tenantID).Result()
-
-		_, nextCursor, err := r.managers[tenantID].ListTokens(ctx, cursor, r.pageSize)
-		if err != nil {
-			r.logger.Warn(ctx, "reconciler: list tokens error", "error", err)
-			return
-		}
-
-		_, _ = r.managers[tenantID].CleanupExpiredTokens(ctx)
-
-		if nextCursor == "" {
-			_ = r.redis.Del(ctx, cursorKeyPrefix+tenantID).Err()
-			break
-		}
-		_ = r.redis.Set(ctx, cursorKeyPrefix+tenantID, nextCursor, 0).Err()
+	if _, err := r.managers[tenantID].CleanupExpiredTokens(ctx); err != nil {
+		r.logger.Warn(ctx, "reconciler: cleanup expired tokens error", "tenant_id", tenantID, "error", err)
 	}
 }
