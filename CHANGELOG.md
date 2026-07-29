@@ -35,6 +35,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   model accurately — one tenant per process, multi-tenancy achieved by running multiple
   instances (see `examples/multi-tenant`); `MultiTenantRegistry.Add`/`Drain`/`Remove` are
   documented as internal primitives with no exposed runtime caller today
+- Replaced deprecated `grpc.Dial` with `grpc.NewClient` in the README's client connection
+  snippet, consistent with `client/client.go`
 
 ## [v1.0.0] — 2026-06-18
 
