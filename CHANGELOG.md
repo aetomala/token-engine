@@ -17,6 +17,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Removed `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` — the reconciler no longer paginates through
   tokens (see [ADR-011](doc/adr/ADR-011-cursor-based-reconciler.md) Outcome); the env var is no
   longer read
+- Bumped `github.com/aetomala/jwtauth` to v1.1.0 — `RefreshStore.Cleanup` discovery cost drops
+  from O(n) to O(log n + k) (Redis) / O(k log n) (Memory), compounding with the #97 fix that
+  already reduced call frequency to once per tenant per pass. Tokens stored before this upgrade
+  require a one-time backfill to be covered by the new expiry index — see the next release note
+  in this milestone once the backfill capability ships
 
 ### Fixed
 
