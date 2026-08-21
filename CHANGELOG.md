@@ -53,6 +53,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NoOpLocker`/`NoOpLock` note from `UPGRADING.md`'s v0.6.0→v0.7.0 section, then removed the
   orphaned `UPGRADING.md`
 
+### Chore
+
+- Fixed CI intermittently failing at the `Install buf` step with an unauthenticated GitHub
+  API rate-limit error — `bufbuild/buf-setup-action@v1` now receives `github_token` so its
+  download-URL lookup authenticates against the repo's own rate limit instead of the shared
+  anonymous pool
+
 ## [v1.0.0] — 2026-06-18
 
 ### Fixed
