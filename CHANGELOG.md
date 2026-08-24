@@ -9,6 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added `MultiTenantRegistry.AllBackfillers()`, retaining a callable reference to each
+  tenant's `RedisRefreshStore` via a narrow `ExpiryIndexBackfiller` interface —
+  prerequisite plumbing for the upcoming operator-triggered `BackfillExpiryIndex`
+  migration (see jwtauth v1.1.0's expiry-indexed `Cleanup` rewrite)
+
 ### Changed
 
 - `config.Load()` now returns descriptive sentinel errors for all validation failures instead

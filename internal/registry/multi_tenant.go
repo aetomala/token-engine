@@ -24,10 +24,21 @@ const (
 	tenantRegistryOpLabel  = "operation"
 )
 
+// ExpiryIndexBackfiller is satisfied by any refresh store that can migrate pre-upgrade
+// tokens into jwtauth's expiry index. Implemented by *storage.RedisRefreshStore — not
+// imported directly, keeping the operator-triggered backfill surface decoupled from the
+// concrete storage type.
+type ExpiryIndexBackfiller interface {
+	// BackfillExpiryIndex indexes tokens stored before jwtauth's expiry-indexed Cleanup
+	// rewrite. Returns the number of expired tokens removed and the number indexed.
+	BackfillExpiryIndex(ctx context.Context) (removed, indexed int, err error)
+}
+
 type tenantEntry struct {
-	manager  tokens.TokenManager
-	km       keys.KeyManager
-	draining bool
+	manager    tokens.TokenManager
+	km         keys.KeyManager
+	backfiller ExpiryIndexBackfiller
+	draining   bool
 }
 
 // MultiTenantRegistry is a dynamic multi-tenant implementation of TenantRegistry.
@@ -148,9 +159,10 @@ func (r *MultiTenantRegistry) Add(ctx context.Context, tenantID string, cfg Tena
 
 	// ===== STEP 5: Register entry =====
 	r.tenants[tenantID] = &tenantEntry{
-		manager:  manager,
-		km:       km,
-		draining: false,
+		manager:    manager,
+		km:         km,
+		backfiller: refreshStore,
+		draining:   false,
 	}
 
 	// ===== STEP 6: Emit metrics =====
@@ -259,6 +271,20 @@ func (r *MultiTenantRegistry) AllKeyManagers() map[string]keys.KeyManager {
 	result := make(map[string]keys.KeyManager, len(r.tenants))
 	for id, entry := range r.tenants {
 		result[id] = entry.km
+	}
+	return result
+}
+
+// AllBackfillers returns a snapshot of all registered tenants' ExpiryIndexBackfillers.
+// The returned map is a defensive copy — mutations do not affect the registry. Draining
+// tenants are included — a tenant may still hold pre-upgrade tokens worth backfilling
+// before its removal completes.
+func (r *MultiTenantRegistry) AllBackfillers() map[string]ExpiryIndexBackfiller {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string]ExpiryIndexBackfiller, len(r.tenants))
+	for id, entry := range r.tenants {
+		result[id] = entry.backfiller
 	}
 	return result
 }
