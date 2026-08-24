@@ -138,6 +138,14 @@ type Config struct {
 	// env: TOKEN_ENGINE_ROTATION_WINDOW_GUARD; default: 1 * time.Minute
 	// parse failure — log warning, use default
 	RotationWindowGuard time.Duration
+
+	// BackfillExpiryIndex triggers jwtauth's one-time BackfillExpiryIndex migration for every
+	// tenant at startup when true. Required once per tenant when upgrading an existing
+	// Redis-backed deployment from jwtauth v1.0.0; safe to leave true across restarts since
+	// the migration is idempotent, but should be unset after the first successful run.
+	// env: TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX; default: false
+	// parse failure — log warning, use default false
+	BackfillExpiryIndex bool
 }
 
 // Load reads environment variables and validates them into a *Config.
@@ -170,6 +178,7 @@ func Load() (*Config, error) {
 	lockTTLEnv := os.Getenv("TOKEN_ENGINE_LOCK_TTL")
 	reconciliationIntervalEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
 	rotationWindowGuardEnv := os.Getenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
+	backfillExpiryIndexEnv := os.Getenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX")
 
 	// ===== STEP 2: Fatal validations (before any defaults) =====
 
@@ -362,6 +371,19 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// ===== STEP 6: Return config =====
+	// ===== STEP 6: Parse boolean fields (with warnings on failure) =====
+	if backfillExpiryIndexEnv == "" {
+		c.BackfillExpiryIndex = false
+	} else {
+		backfill, err := strconv.ParseBool(backfillExpiryIndexEnv)
+		if err != nil {
+			log.Printf("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX parse error: %v; using default false", err)
+			c.BackfillExpiryIndex = false
+		} else {
+			c.BackfillExpiryIndex = backfill
+		}
+	}
+
+	// ===== STEP 7: Return config =====
 	return c, nil
 }

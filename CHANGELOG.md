@@ -15,6 +15,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tenant's `RedisRefreshStore` via a narrow `ExpiryIndexBackfiller` interface —
   prerequisite plumbing for the upcoming operator-triggered `BackfillExpiryIndex`
   migration (see jwtauth v1.1.0's expiry-indexed `Cleanup` rewrite)
+- Added `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` — set to `true` to run jwtauth v1.1.0's
+  one-time `BackfillExpiryIndex` migration for every tenant at startup, logging per-tenant
+  results. Required once per tenant when upgrading an existing Redis-backed deployment from
+  jwtauth v1.0.0 (see #114, #115); safe to run more than once
 
 ### Changed
 
