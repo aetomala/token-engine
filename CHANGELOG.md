@@ -7,6 +7,76 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+## [v1.1.0] — 2026-08-24
+
+### Added
+
+- Added `MultiTenantRegistry.AllBackfillers()`, retaining a callable reference to each
+  tenant's `RedisRefreshStore` via a narrow `ExpiryIndexBackfiller` interface —
+  prerequisite plumbing for the upcoming operator-triggered `BackfillExpiryIndex`
+  migration (see jwtauth v1.1.0's expiry-indexed `Cleanup` rewrite)
+- Added `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` — set to `true` to run jwtauth v1.1.0's
+  one-time `BackfillExpiryIndex` migration for every tenant at startup, logging per-tenant
+  results. Required once per tenant when upgrading an existing Redis-backed deployment from
+  jwtauth v1.0.0 (see #114, #115); safe to run more than once
+
+### Changed
+
+- `config.Load()` now returns descriptive sentinel errors for all validation failures instead
+  of calling `os.Exit` directly; `main()` retains sole responsibility for deciding whether to
+  exit on a config error
+- Removed `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` — the reconciler no longer paginates through
+  tokens (see [ADR-011](doc/adr/ADR-011-cursor-based-reconciler.md) Outcome); the env var is no
+  longer read
+- Bumped `github.com/aetomala/jwtauth` to v1.1.0 — `RefreshStore.Cleanup` discovery cost drops
+  from O(n) to O(log n + k) (Redis) / O(k log n) (Memory), compounding with the #97 fix that
+  already reduced call frequency to once per tenant per pass. Tokens stored before this upgrade
+  require a one-time backfill to be covered by the new expiry index — see
+  `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` above
+
+### Fixed
+
+- Fixed the reconciler calling `CleanupExpiredTokens` once per `ListTokens` page instead of
+  once per tenant per pass — `CleanupExpiredTokens` is a full keyspace scan independent of
+  pagination, so a tenant with N pages triggered N redundant full scans per reconciliation run
+- Fixed inconsistent gRPC error codes for an invalid `tenant_id` — the validation interceptor
+  now rejects an empty `tenant_id` with `codes.InvalidArgument` for every tenant-scoped RPC
+  before caller authorization or the registry are reached, instead of surfacing as
+  `codes.PermissionDenied` or `codes.InvalidArgument` depending on which downstream check ran
+  first
+- Fixed `RevokeAllForUserAndAudience` audit events missing `caller_identity` and `occurred_at`,
+  and reusing the same scope as a full user revocation — the event now records the caller and
+  timestamp like its sibling revocation handlers, and uses a distinct `user_audience` scope
+- Fixed `TOKEN_ENGINE_STATIC_CALLER_KEYS` rejecting API keys containing `=` (including base64
+  keys with `=` padding) — pairs are now split at the last `=`, so the key may contain `=`
+  characters while the identity is read verbatim after the final delimiter
+
+### Documentation
+
+- Corrected the README and ARCHITECTURE.md "multi-tenant" framing to describe the shipped
+  model accurately — one tenant per process, multi-tenancy achieved by running multiple
+  instances (see `examples/multi-tenant`); `MultiTenantRegistry.Add`/`Drain`/`Remove` are
+  documented as internal primitives with no exposed runtime caller today
+- Replaced deprecated `grpc.Dial` with `grpc.NewClient` in the README's client connection
+  snippet, consistent with `client/client.go`
+- Consolidated `UPGRADING.md` and `doc/MIGRATION.md` into a single canonical upgrade guide
+  (`doc/MIGRATION.md`) — merged the Redis key namespace isolation consequence and
+  `NoOpLocker`/`NoOpLock` note from `UPGRADING.md`'s v0.6.0→v0.7.0 section, then removed the
+  orphaned `UPGRADING.md`
+
+### Chore
+
+- Fixed CI intermittently failing at the `Install buf` step with an unauthenticated GitHub
+  API rate-limit error — `bufbuild/buf-setup-action@v1` now receives `github_token` so its
+  download-URL lookup authenticates against the repo's own rate limit instead of the shared
+  anonymous pool
+- Fixed CI intermittently failing at the `golangci-lint` step on a remote JSON Schema fetch
+  timeout — `golangci-lint-action@v9` now runs with `verify: false`, removing the network
+  dependency on `golangci-lint.run`; the subsequent `golangci-lint run` step already
+  exercises `.golangci.yml` directly
+
 ## [v1.0.0] — 2026-06-18
 
 ### Fixed

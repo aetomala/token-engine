@@ -3,7 +3,6 @@ package config_test
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/aetomala/token-engine/internal/config"
@@ -42,8 +41,8 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH")
 		os.Unsetenv("TOKEN_ENGINE_LOCK_TTL")
 		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
-		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
 		os.Unsetenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
+		os.Unsetenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX")
 	}
 
 	AfterEach(func() {
@@ -53,86 +52,82 @@ var _ = Describe("Config", func() {
 	// ===== PHASE 1: Constructor and Initialization =====
 	Describe("Phase 1: Constructor and Initialization", func() {
 	Context("TOKEN_ENGINE_ISSUER empty", func() {
-		It("calls os.Exit(1)", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "issuer_empty" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
-				os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
-				config.Load()
-				return
-			}
+		It("returns ErrIssuerEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=issuer_empty")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrIssuerEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("TOKEN_ENGINE_AUDIENCE empty", func() {
-		It("calls os.Exit(1)", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "audience_empty" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
-				os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
-				config.Load()
-				return
-			}
+		It("returns ErrAudienceEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=audience_empty")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrAudienceEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("TOKEN_ENGINE_TLS_MODE unknown value", func() {
-		It("calls os.Exit(1)", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "tls_unknown" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "unknown-mode")
-				os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
-				config.Load()
-				return
-			}
+		It("returns ErrInvalidTLSMode", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "unknown-mode")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "key1=caller1")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=tls_unknown")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrInvalidTLSMode)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("TOKEN_ENGINE_STATIC_CALLER_KEYS malformed", func() {
-		It("calls os.Exit(1)", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "keys_malformed" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
-				os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "malformed-key-no-equals-sign")
-				config.Load()
-				return
-			}
+		It("returns ErrStaticCallerKeysFormat", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "malformed-key-no-equals-sign")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=keys_malformed")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrStaticCallerKeysFormat)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_STATIC_CALLER_KEYS empty when TLSMode is disabled", func() {
+		It("returns ErrStaticCallerKeysEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			// TOKEN_ENGINE_STATIC_CALLER_KEYS intentionally not set
+
+			cfg, err := config.Load()
+
+			Expect(errors.Is(err, config.ErrStaticCallerKeysEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
@@ -219,6 +214,24 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Context("TOKEN_ENGINE_STATIC_CALLER_KEYS value contains '=' padding", func() {
+		It("preserves the key verbatim and parses the correct identity", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "disabled")
+			os.Setenv("TOKEN_ENGINE_STATIC_CALLER_KEYS", "c2VjcmV0Zm9v===caller-a")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.StaticCallerKeys).To(Equal(map[string]string{
+				"c2VjcmV0Zm9v==": "caller-a",
+			}))
+
+			cleanupEnvVars()
+		})
+	})
+
 	Context("all required fields set", func() {
 		It("returns a fully populated Config without error", func() {
 			setRequiredEnvVars()
@@ -280,94 +293,74 @@ var _ = Describe("Config", func() {
 	})
 
 	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_CERT_FILE is absent", func() {
-		It("logs error and exits 1", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "mtls_cert_file_absent" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
-				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
-				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
-				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
-				config.Load()
-				return
-			}
+		It("returns ErrTLSCertFileEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+			os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+			os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_cert_file_absent")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrTLSCertFileEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_KEY_FILE is absent", func() {
-		It("logs error and exits 1", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "mtls_key_file_absent" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
-				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
-				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
-				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
-				config.Load()
-				return
-			}
+		It("returns ErrTLSKeyFileEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+			os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
+			os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_key_file_absent")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrTLSKeyFileEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_TLS_CA_FILE is absent", func() {
-		It("logs error and exits 1", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "mtls_ca_file_absent" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
-				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
-				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
-				os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
-				config.Load()
-				return
-			}
+		It("returns ErrTLSCAFileEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+			os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+			os.Setenv("TOKEN_ENGINE_CALLER_REGISTRY_PATH", "/path/to/caller-registry.yaml")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_ca_file_absent")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrTLSCAFileEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
 	Context("when TLSMode is 'mtls' and TOKEN_ENGINE_CALLER_REGISTRY_PATH is absent", func() {
-		It("logs error and exits 1", func() {
-			if os.Getenv("TEST_SUBPROCESS") == "mtls_caller_registry_absent" {
-				os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
-				os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
-				os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
-				os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
-				os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
-				os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
-				config.Load()
-				return
-			}
+		It("returns ErrCallerRegistryPathEmpty", func() {
+			os.Setenv("TOKEN_ENGINE_ISSUER", "required-issuer")
+			os.Setenv("TOKEN_ENGINE_AUDIENCE", "required-audience")
+			os.Setenv("TOKEN_ENGINE_TLS_MODE", "mtls")
+			os.Setenv("TOKEN_ENGINE_TLS_CERT_FILE", "/path/to/cert.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_KEY_FILE", "/path/to/key.pem")
+			os.Setenv("TOKEN_ENGINE_TLS_CA_FILE", "/path/to/ca.pem")
 
-			cmd := exec.Command(os.Args[0], "-test.run=TestConfig")
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=mtls_caller_registry_absent")
-			err := cmd.Run()
+			cfg, err := config.Load()
 
-			var exitErr *exec.ExitError
-			Expect(errors.As(err, &exitErr)).To(BeTrue())
-			Expect(exitErr.ExitCode()).To(Equal(1))
+			Expect(errors.Is(err, config.ErrCallerRegistryPathEmpty)).To(BeTrue())
+			Expect(cfg).To(BeNil())
+
+			cleanupEnvVars()
 		})
 	})
 
@@ -467,47 +460,6 @@ var _ = Describe("Config", func() {
 		})
 	})
 
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE set to valid integer", func() {
-		It("parses and stores the value", func() {
-			setRequiredEnvVars()
-			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "50")
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(50))
-
-			cleanupEnvVars()
-		})
-	})
-
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE absent", func() {
-		It("uses default of 100", func() {
-			setRequiredEnvVars()
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(100))
-
-			cleanupEnvVars()
-		})
-	})
-
-	Context("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse failure", func() {
-		It("logs warning and uses default 100", func() {
-			setRequiredEnvVars()
-			os.Setenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE", "notanint")
-
-			cfg, err := config.Load()
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.ReconciliationPageSize).To(Equal(100))
-
-			cleanupEnvVars()
-		})
-	})
-
 	Context("TOKEN_ENGINE_ROTATION_WINDOW_GUARD set to valid duration", func() {
 		It("parses and stores the duration", func() {
 			setRequiredEnvVars()
@@ -544,6 +496,61 @@ var _ = Describe("Config", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.RotationWindowGuard).To(Equal(1 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX absent", func() {
+		It("defaults to false", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX set to true", func() {
+		It("parses and stores true", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "true")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeTrue())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX set to false", func() {
+		It("parses and stores false", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "false")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX parse failure", func() {
+		It("logs warning and uses default false", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "not-a-bool")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
 
 			cleanupEnvVars()
 		})

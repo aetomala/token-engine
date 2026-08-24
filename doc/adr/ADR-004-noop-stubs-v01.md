@@ -46,9 +46,10 @@ Two of the three NoOp stubs have been superseded by real implementations:
 - **`SlogAuditStore`** replaced `NoOpAuditStore` in v0.3.0 — writes structured log lines for
   all revocation events and is wired in `main.go`. `NoOpAuditStore` remains available as a
   test utility for components that need an `AuditStore` without a real logger.
-- **`CursorReconciler`** replaced `NoOpReconciler` in v0.6.0 — performs cursor-based
-  reconciliation of the Redis-backed refresh token store on a configurable interval and is
-  wired in `main.go`. `NoOpReconciler` remains available as a test utility.
+- **`CursorReconciler`** replaced `NoOpReconciler` in v0.6.0 — cleans up expired tokens in the
+  Redis-backed refresh token store per tenant on a configurable interval and is wired in
+  `main.go` (see [ADR-011](ADR-011-cursor-based-reconciler.md) Outcome for why it's no longer
+  cursor-based). `NoOpReconciler` remains available as a test utility.
 - **`MultiTenantRegistry`** replaced `StaticTenantRegistry` in v0.5.0.
 
 ## References

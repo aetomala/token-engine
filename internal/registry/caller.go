@@ -77,8 +77,9 @@ func NewStaticCallerRegistry(cfg *CallerRegistryConfig, logger observability.Log
 }
 
 // IsPermitted returns true if callerIdentity is authorized to operate on tenantID.
-// If tenantID is empty, returns (true, nil) — the handler resolves the tenant from the registry
-// and returns NotFound for an unknown or empty tenant_id.
+// If tenantID is empty, returns (true, nil) — the validation interceptor, which runs later
+// in the chain, rejects requests with an empty tenant_id with codes.InvalidArgument before
+// the handler runs, so this method does not need to reject it itself.
 // Returns (false, codes.PermissionDenied) if callerIdentity is not in the registry or tenantID
 // is not in the caller's permitted_tenants list.
 func (r *StaticCallerRegistry) IsPermitted(_ context.Context, callerIdentity string, tenantID string) (bool, error) {

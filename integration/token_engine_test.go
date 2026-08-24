@@ -41,7 +41,7 @@ var _ = BeforeSuite(func() {
 	mr, err = miniredis.Run()
 	Expect(err).NotTo(HaveOccurred())
 
-	// ===== Build config directly — config.Load() calls os.Exit on fatal errors =====
+	// ===== Build config directly to avoid depending on process environment variables =====
 	cfg := &config.Config{
 		Issuer:           "test-issuer",
 		Audience:         "api",

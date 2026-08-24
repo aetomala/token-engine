@@ -127,6 +127,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ===== One-Time Expiry-Index Backfill (gated, blocks startup until complete) =====
+	if cfg.BackfillExpiryIndex {
+		registry.RunExpiryIndexBackfill(ctx, tenantReg.AllBackfillers(), logger)
+	}
+
 	// ===== Authenticator =====
 	var auth interceptor.Authenticator
 	if cfg.TLSMode == "mtls" {
@@ -206,10 +211,8 @@ func main() {
 	reconciler := reconciliation.NewCursorReconciler(
 		allManagers,
 		locker,
-		redisClient,
 		logger,
 		metrics,
-		cfg.ReconciliationPageSize,
 		cfg.LockTTL,
 	)
 

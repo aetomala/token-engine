@@ -305,6 +305,39 @@ var _ = Describe("MultiTenantRegistry", func() {
 		})
 	})
 
+	Describe("Phase 3: Core Operations — AllBackfillers", func() {
+		Context("with tenants registered", func() {
+			It("returns a map containing registered tenants", func() {
+				Expect(reg.Add(ctx, "tenant1", registry.TenantConfig{Issuer: "tenant1", Audience: "api"})).To(Succeed())
+
+				backfillers := reg.AllBackfillers()
+				Expect(backfillers).To(HaveKey("tenant1"))
+				Expect(backfillers["tenant1"]).NotTo(BeNil())
+			})
+
+			It("returns a snapshot — map mutations do not affect the registry", func() {
+				Expect(reg.Add(ctx, "tenant1", registry.TenantConfig{Issuer: "tenant1", Audience: "api"})).To(Succeed())
+
+				backfillers := reg.AllBackfillers()
+				Expect(backfillers).To(HaveKey("tenant1"))
+
+				// Mutate the returned map
+				delete(backfillers, "tenant1")
+
+				// Registry is unaffected
+				backfillers2 := reg.AllBackfillers()
+				Expect(backfillers2).To(HaveKey("tenant1"))
+			})
+		})
+
+		Context("with no tenants registered", func() {
+			It("returns an empty map", func() {
+				backfillers := reg.AllBackfillers()
+				Expect(backfillers).To(BeEmpty())
+			})
+		})
+	})
+
 	// ===== PHASE 4: Error Cases =====
 	Describe("Phase 4: Error Cases", func() {
 		Context("when adding two tenants with different IDs", func() {

@@ -161,6 +161,11 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
   keys — tracing dashboards querying jwtauth-origin span attributes require updating.
 - `tokens.Manager` interface grows from 19 to 20 methods — regenerate mocks if maintaining
   custom mocks of this interface.
+- **Redis key namespace isolation:** `RedisKeyStoreConfig` and `RedisRefreshStoreConfig` now
+  wire the `Namespace` field from `TOKEN_ENGINE_ISSUER` — JWKS and refresh token Redis keys
+  are now namespaced by tenant ID.
+- `NoOpLocker` and `NoOpLock` added to `internal/lock` as test utilities only — no effect on
+  production deployments.
 - No new environment variables.
 
 ### Required actions
@@ -171,12 +176,17 @@ API surface audits — see [pre-upgrade-runbook.md](pre-upgrade-runbook.md).
 3. Snapshot Prometheus metrics before and after upgrade in staging to catch any renames
    (pre-upgrade runbook §4).
 4. Update tracing dashboards for any renamed jwtauth span attribute keys.
+5. Plan a brief re-authentication window when rolling out to a live deployment (see
+   Consequences below).
 
 ### Consequences if skipped
 
 - Renamed span attributes produce silent gaps in tracing dashboards — old queries return no
   data for spans emitted after the upgrade.
 - Stale mock interfaces cause compilation failures if regeneration is skipped.
+- Existing Redis refresh token and JWKS keys were written without a namespace prefix prior to
+  v0.7.0. After upgrading, token-engine looks for them under the new namespaced prefix and will
+  not find the old keys — callers receive token-not-found errors and must re-issue tokens.
 
 ---
 
@@ -252,3 +262,35 @@ None.
 - Clients that discard `RefreshToken`'s `refresh_token` response field will lose their refresh
   token after each call, requiring re-authentication via `IssueToken`.
 - Health alerting that expects exactly the pre-v1.0 set of check names may fire false positives.
+
+## v1.0.0 → v1.1.0
+
+### What changed
+
+- **`github.com/aetomala/jwtauth` bumped to v1.1.0.** `RefreshStore.Cleanup` no longer scans
+  the full token keyspace to discover expired tokens — both backends now use an expiry index
+  populated at `Store` time (Memory: `container/heap`; Redis: a new `token_expiry_index` sorted
+  set), cutting discovery cost from O(n) to O(k log n) / O(log n + k). No breaking API changes;
+  no code changes required beyond the dependency bump.
+- **New `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` env var.** Set to `true` to run jwtauth's one-time
+  `BackfillExpiryIndex` migration for every tenant at startup — required to make tokens stored
+  under jwtauth v1.0.0 visible to the new expiry-indexed `Cleanup` path. See
+  [operator-guide.md §12](operator-guide.md#12-one-time-expiry-index-backfill-after-jwtauth-v110-upgrade)
+  for full details.
+
+### Required actions
+
+1. **Deploy the v1.1.0 binary.** No other action is required for tenants with no pre-existing
+   tokens (e.g. a fresh deployment) — new tokens are indexed automatically at `Store` time.
+2. **Run the one-time backfill on any existing Redis-backed deployment.** Set
+   `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX=true`, restart, watch the per-tenant
+   `expiry index backfill complete` log lines, then unset the env var and restart again.
+
+### Consequences if skipped
+
+- The service continues to run correctly — `Cleanup` keeps working for tokens stored *after*
+  the upgrade. This does not error and does not appear in health checks.
+- Tokens stored before the upgrade are never discovered by the new `Cleanup` path. Their
+  entries in the `user_tokens:`, `audience_tokens:`, and `audience_user_tokens:` membership
+  sets persist indefinitely until the backfill is run — a slow, silent, unbounded growth in
+  Redis memory for long-running pre-upgrade deployments.

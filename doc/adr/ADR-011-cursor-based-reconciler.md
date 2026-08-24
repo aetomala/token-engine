@@ -1,6 +1,6 @@
 # ADR-011: Cursor-Based Reconciler
 
-**Status:** Planned (v0.6)
+**Status:** Complete — v0.6.0
 **Date:** —
 
 ## Context
@@ -63,6 +63,23 @@ constraint.
 - Cursor TTL must be tuned relative to key rotation interval and expected token volume.
 - A bug that incorrectly identifies live tokens as orphans would silently revoke valid tokens
   — conservative orphan detection heuristic and test coverage are essential.
+
+## Outcome
+
+The reconciler shipped in v0.6.0 as `CursorReconciler`, but implements a narrower scope than
+this ADR decided: it acquires the per-tenant distributed lock (item 3) and calls
+`TokenManager.CleanupExpiredTokens` once per tenant per `Run` pass — a full expiry-based sweep
+of the tenant's refresh store. It does not page through `ListTokens` or perform per-token
+orphan detection against idempotency records (item 2). That per-token work was never built,
+and no reverse mapping from a refresh token to the idempotency key that produced it exists to
+support it — idempotency keys are derived from tenant, method, and a caller-supplied key, not
+the resulting token.
+
+The shipped implementation retained the `CursorReconciler` name for historical continuity, but
+the cursor persistence (items 1 and 4) was removed in v1.0.1 once it was confirmed to serve no
+purpose without per-token work to resume — `CleanupExpiredTokens` is a self-contained
+full-namespace scan independent of any pagination cursor, so re-running it once per page (the
+original bug: issue #97) provided no benefit and added Redis load proportional to page count.
 
 ## References
 

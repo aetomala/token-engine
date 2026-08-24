@@ -5,29 +5,24 @@ import (
 	"errors"
 	"time"
 
-	"github.com/aetomala/jwtauth/pkg/storage"
 	"github.com/aetomala/jwtauth/pkg/tokens"
-	"github.com/alicebob/miniredis/v2"
 	. "github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/mock/gomock"
 )
 
 var _ = Describe("Reconciler", func() {
 	var (
-		ctx         context.Context
-		cancel      context.CancelFunc
-		ctrl        *gomock.Controller
-		mockLocker  *testutil.MockLocker
-		mockLock    *testutil.MockLock
-		mockTM      *testutil.MockTokenManager
-		mr          *miniredis.Miniredis
-		redisClient *redis.Client
-		sut         *CursorReconciler
+		ctx        context.Context
+		cancel     context.CancelFunc
+		ctrl       *gomock.Controller
+		mockLocker *testutil.MockLocker
+		mockLock   *testutil.MockLock
+		mockTM     *testutil.MockTokenManager
+		sut        *CursorReconciler
 	)
 	BeforeEach(func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
@@ -35,10 +30,8 @@ var _ = Describe("Reconciler", func() {
 		mockLocker = testutil.NewMockLocker(ctrl)
 		mockLock = testutil.NewMockLock(ctrl)
 		mockTM = testutil.NewMockTokenManager(ctrl)
-		mr, _ = miniredis.Run()
-		redisClient = redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	})
-	AfterEach(func() { cancel(); ctrl.Finish(); redisClient.Close(); mr.Close() })
+	AfterEach(func() { cancel(); ctrl.Finish() })
 
 	// ===== NoOpReconciler =====
 	Describe("NoOpReconciler", func() {
@@ -80,9 +73,9 @@ var _ = Describe("Reconciler", func() {
 		It("returns a non-nil CursorReconciler", func() {
 			result := NewCursorReconciler(
 				map[string]tokens.TokenManager{"tenant1": mockTM},
-				mockLocker, redisClient,
+				mockLocker,
 				observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-				10, 30*time.Second,
+				30*time.Second,
 			)
 			Expect(result).NotTo(BeNil())
 		})
@@ -92,9 +85,9 @@ var _ = Describe("Reconciler", func() {
 		It("initializes LastSuccessAt to a recent time — startup grace window begins at construction", func() {
 			result := NewCursorReconciler(
 				map[string]tokens.TokenManager{"tenant1": mockTM},
-				mockLocker, redisClient,
+				mockLocker,
 				observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-				10, 30*time.Second,
+				30*time.Second,
 			)
 			Expect(result.LastSuccessAt()).To(BeTemporally("~", time.Now(), time.Second))
 		})
@@ -102,14 +95,13 @@ var _ = Describe("Reconciler", func() {
 
 	Describe("CursorReconciler.Run", func() {
 		Context("when tenantRegistry is empty", func() {
-			It("returns nil without calling ListTokens or CleanupExpiredTokens", func() {
+			It("returns nil without calling CleanupExpiredTokens", func() {
 				emptySut := NewCursorReconciler(
 					map[string]tokens.TokenManager{},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
-				mockTM.EXPECT().ListTokens(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Times(0)
 				err := emptySut.Run(ctx)
 				Expect(err).NotTo(HaveOccurred())
@@ -120,28 +112,27 @@ var _ = Describe("Reconciler", func() {
 			It("skips tenant, returns no error", func() {
 				sut = NewCursorReconciler(
 					map[string]tokens.TokenManager{"tenant1": mockTM},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
 				mockLocker.EXPECT().Acquire(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("lock held"))
-				mockTM.EXPECT().ListTokens(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Times(0)
 				err := sut.Run(ctx)
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
 
-		Context("when lock is acquired and single page returns empty next cursor", func() {
-			It("calls ListTokens, CleanupExpiredTokens, deletes cursor key, releases lock", func() {
+		Context("when lock is acquired", func() {
+			It("calls CleanupExpiredTokens exactly once and releases the lock", func() {
 				sut = NewCursorReconciler(
 					map[string]tokens.TokenManager{"tenant1": mockTM},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
 				mockLocker.EXPECT().Acquire(gomock.Any(), "locks:reconciliation:tenant1", 30*time.Second).Return(mockLock, nil)
-				mockTM.EXPECT().ListTokens(gomock.Any(), "", 10).Return([]*storage.RefreshToken{}, "", nil)
-				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Return(0, nil)
+				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Return(0, nil).Times(1)
 				mockLock.EXPECT().Release(gomock.Any()).Return(nil)
 				err := sut.Run(ctx)
 				Expect(err).NotTo(HaveOccurred())
@@ -154,27 +145,26 @@ var _ = Describe("Reconciler", func() {
 				cancelFn()
 				emptySut := NewCursorReconciler(
 					map[string]tokens.TokenManager{"tenant1": mockTM},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
-				mockTM.EXPECT().ListTokens(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Times(0)
 				err := emptySut.Run(cancelledCtx)
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
 
-		Context("when ListTokens returns an error", func() {
-			It("logs warn, does not write cursor, releases lock, continues to next tenant", func() {
+		Context("when CleanupExpiredTokens returns an error", func() {
+			It("logs warn, releases lock, does not propagate the error", func() {
 				sut = NewCursorReconciler(
 					map[string]tokens.TokenManager{"tenant1": mockTM},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
 				mockLocker.EXPECT().Acquire(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockLock, nil)
-				mockTM.EXPECT().ListTokens(gomock.Any(), "", 10).Return(nil, "", errors.New("store error"))
-				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Times(0)
+				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Return(0, errors.New("store error"))
 				mockLock.EXPECT().Release(gomock.Any()).Return(nil)
 				err := sut.Run(ctx)
 				Expect(err).NotTo(HaveOccurred())
@@ -185,13 +175,12 @@ var _ = Describe("Reconciler", func() {
 			It("advances after Run completes all tenants", func() {
 				sut = NewCursorReconciler(
 					map[string]tokens.TokenManager{"tenant1": mockTM},
-					mockLocker, redisClient,
+					mockLocker,
 					observability.NewNoOpLogger(), observability.NewNoOpMetrics(),
-					10, 30*time.Second,
+					30*time.Second,
 				)
 				before := sut.LastSuccessAt()
 				mockLocker.EXPECT().Acquire(gomock.Any(), "locks:reconciliation:tenant1", 30*time.Second).Return(mockLock, nil)
-				mockTM.EXPECT().ListTokens(gomock.Any(), "", 10).Return(nil, "", nil)
 				mockTM.EXPECT().CleanupExpiredTokens(gomock.Any()).Return(0, nil)
 				mockLock.EXPECT().Release(gomock.Any()).Return(nil)
 

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -8,9 +10,23 @@ import (
 	"time"
 )
 
+// Sentinel errors for Config validation failures.
+var (
+	ErrIssuerEmpty             = errors.New("TOKEN_ENGINE_ISSUER must not be empty")
+	ErrAudienceEmpty           = errors.New("TOKEN_ENGINE_AUDIENCE must not be empty")
+	ErrInvalidTLSMode          = errors.New("TOKEN_ENGINE_TLS_MODE must be 'mtls' or 'disabled'")
+	ErrStaticCallerKeysFormat  = errors.New("TOKEN_ENGINE_STATIC_CALLER_KEYS format error: must be 'key1=identity1,key2=identity2'")
+	ErrStaticCallerKeysEmpty   = errors.New("TOKEN_ENGINE_STATIC_CALLER_KEYS must not be empty when TLSMode is disabled")
+	ErrTLSCertFileEmpty        = errors.New("TOKEN_ENGINE_TLS_CERT_FILE must not be empty when TLSMode is mtls")
+	ErrTLSKeyFileEmpty         = errors.New("TOKEN_ENGINE_TLS_KEY_FILE must not be empty when TLSMode is mtls")
+	ErrTLSCAFileEmpty          = errors.New("TOKEN_ENGINE_TLS_CA_FILE must not be empty when TLSMode is mtls")
+	ErrCallerRegistryPathEmpty = errors.New("TOKEN_ENGINE_CALLER_REGISTRY_PATH must not be empty when TLSMode is mtls")
+)
+
 // Config holds service-global configuration loaded from environment variables.
 // All validation happens during Load() — no network connections are opened.
-// Fatal validation (Issuer, Audience, TLSMode, StaticCallerKeys) occurs before defaults are applied.
+// Required-field validation (Issuer, Audience, TLSMode, StaticCallerKeys) occurs before
+// defaults are applied and returns a sentinel error on failure — callers decide whether to exit.
 type Config struct {
 	// GRPCAddr is the gRPC server listen address.
 	// env: TOKEN_ENGINE_GRPC_ADDR; default: ":9090"
@@ -25,17 +41,17 @@ type Config struct {
 	// TLSMode controls transport security. Accepted values: "mtls", "disabled".
 	// Empty string treated as "mtls".
 	// env: TOKEN_ENGINE_TLS_MODE; default: "mtls"
-	// unknown value — log error and os.Exit(1)
+	// unknown value — returns ErrInvalidTLSMode
 	TLSMode string
 
 	// Issuer is the JWT issuer claim stamped on all issued tokens.
 	// env: TOKEN_ENGINE_ISSUER; no default
-	// empty string — log error and os.Exit(1)
+	// empty string — returns ErrIssuerEmpty
 	Issuer string
 
 	// Audience is the default JWT audience claim for all issued tokens.
 	// env: TOKEN_ENGINE_AUDIENCE; no default
-	// empty string — log error and os.Exit(1)
+	// empty string — returns ErrAudienceEmpty
 	Audience string
 
 	// OTLPEndpoint is the OpenTelemetry collector endpoint for trace export.
@@ -61,30 +77,30 @@ type Config struct {
 	// StaticCallerKeys is the API key → caller identity map for StaticKeyAuthenticator.
 	// Format: "key1=identity1,key2=identity2". Required when TLSMode == "disabled".
 	// env: TOKEN_ENGINE_STATIC_CALLER_KEYS; no default
-	// parse failure or empty map when TLSMode=="disabled" — log error and os.Exit(1)
+	// parse failure — returns ErrStaticCallerKeysFormat; empty map when TLSMode=="disabled" — returns ErrStaticCallerKeysEmpty
 	StaticCallerKeys map[string]string
 
 	// TLSCertFile is the path to the service's TLS certificate file (PEM).
 	// env: TOKEN_ENGINE_TLS_CERT_FILE; no default
-	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// absent when TLSMode == "mtls" — returns ErrTLSCertFileEmpty
 	// ignored when TLSMode == "disabled"
 	TLSCertFile string
 
 	// TLSKeyFile is the path to the service's TLS private key file (PEM).
 	// env: TOKEN_ENGINE_TLS_KEY_FILE; no default
-	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// absent when TLSMode == "mtls" — returns ErrTLSKeyFileEmpty
 	// ignored when TLSMode == "disabled"
 	TLSKeyFile string
 
 	// TLSCAFile is the path to the CA certificate file for client certificate verification (PEM).
 	// env: TOKEN_ENGINE_TLS_CA_FILE; no default
-	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// absent when TLSMode == "mtls" — returns ErrTLSCAFileEmpty
 	// ignored when TLSMode == "disabled"
 	TLSCAFile string
 
 	// CallerRegistryPath is the filesystem path to the caller-registry YAML file.
 	// env: TOKEN_ENGINE_CALLER_REGISTRY_PATH; no default
-	// absent when TLSMode == "mtls" — log error and os.Exit(1)
+	// absent when TLSMode == "mtls" — returns ErrCallerRegistryPathEmpty
 	// optional when TLSMode == "disabled" — empty string is valid when disabled
 	CallerRegistryPath string
 
@@ -118,21 +134,25 @@ type Config struct {
 	// parse failure — log warning, use default
 	ReconciliationInterval time.Duration
 
-	// ReconciliationPageSize is the number of tokens fetched per ListTokens page.
-	// env: TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE; default: 100
-	// parse failure — log warning, use default
-	ReconciliationPageSize int
-
 	// RotationWindowGuard is the minimum time since last key generation before a new key is generated.
 	// env: TOKEN_ENGINE_ROTATION_WINDOW_GUARD; default: 1 * time.Minute
 	// parse failure — log warning, use default
 	RotationWindowGuard time.Duration
+
+	// BackfillExpiryIndex triggers jwtauth's one-time BackfillExpiryIndex migration for every
+	// tenant at startup when true. Required once per tenant when upgrading an existing
+	// Redis-backed deployment from jwtauth v1.0.0; safe to leave true across restarts since
+	// the migration is idempotent, but should be unset after the first successful run.
+	// env: TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX; default: false
+	// parse failure — log warning, use default false
+	BackfillExpiryIndex bool
 }
 
 // Load reads environment variables and validates them into a *Config.
-// Fatal validation (Issuer, Audience, TLSMode, StaticCallerKeys) occurs before defaults.
-// Duration and integer parse failures log a warning and use defaults.
-// Returns *Config on success or exits fatally on required-field violations.
+// Required-field validation (Issuer, Audience, TLSMode, StaticCallerKeys) occurs before
+// defaults are applied and returns a sentinel error on failure — see the Err* sentinels
+// in this package. Duration and integer parse failures log a warning and use defaults.
+// Callers are responsible for deciding whether to exit on a returned error.
 func Load() (*Config, error) {
 	c := &Config{}
 
@@ -157,22 +177,20 @@ func Load() (*Config, error) {
 	jwksCacheMaxAgeEnv := os.Getenv("TOKEN_ENGINE_JWKS_CACHE_MAX_AGE")
 	lockTTLEnv := os.Getenv("TOKEN_ENGINE_LOCK_TTL")
 	reconciliationIntervalEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
-	reconciliationPageSizeEnv := os.Getenv("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE")
 	rotationWindowGuardEnv := os.Getenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
+	backfillExpiryIndexEnv := os.Getenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX")
 
 	// ===== STEP 2: Fatal validations (before any defaults) =====
 
 	// Validate Issuer
 	if issuerEnv == "" {
-		log.Printf("TOKEN_ENGINE_ISSUER must not be empty")
-		os.Exit(1)
+		return nil, ErrIssuerEmpty
 	}
 	c.Issuer = issuerEnv
 
 	// Validate Audience
 	if audienceEnv == "" {
-		log.Printf("TOKEN_ENGINE_AUDIENCE must not be empty")
-		os.Exit(1)
+		return nil, ErrAudienceEmpty
 	}
 	c.Audience = audienceEnv
 
@@ -181,8 +199,7 @@ func Load() (*Config, error) {
 		tlsModeEnv = "mtls"
 	}
 	if tlsModeEnv != "mtls" && tlsModeEnv != "disabled" {
-		log.Printf("TOKEN_ENGINE_TLS_MODE must be 'mtls' or 'disabled'")
-		os.Exit(1)
+		return nil, ErrInvalidTLSMode
 	}
 	c.TLSMode = tlsModeEnv
 
@@ -191,37 +208,33 @@ func Load() (*Config, error) {
 	if staticCallerKeysEnv != "" {
 		pairs := strings.Split(staticCallerKeysEnv, ",")
 		for _, pair := range pairs {
-			parts := strings.Split(pair, "=")
-			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				log.Printf("TOKEN_ENGINE_STATIC_CALLER_KEYS format error: must be 'key1=identity1,key2=identity2'")
-				os.Exit(1)
+			// Split at the last '=' so a key containing '=' (e.g. base64 padding)
+			// is preserved verbatim; the identity is read after the final delimiter.
+			idx := strings.LastIndex(pair, "=")
+			if idx <= 0 || idx == len(pair)-1 {
+				return nil, fmt.Errorf("%w: pair %q", ErrStaticCallerKeysFormat, pair)
 			}
-			staticCallerKeys[parts[0]] = parts[1]
+			staticCallerKeys[pair[:idx]] = pair[idx+1:]
 		}
 	}
 	if c.TLSMode == "disabled" && len(staticCallerKeys) == 0 {
-		log.Printf("TOKEN_ENGINE_STATIC_CALLER_KEYS must not be empty when TLSMode is disabled")
-		os.Exit(1)
+		return nil, ErrStaticCallerKeysEmpty
 	}
 	c.StaticCallerKeys = staticCallerKeys
 
 	// Validate TLS fields when TLSMode == "mtls"
 	if c.TLSMode == "mtls" {
 		if tlsCertFileEnv == "" {
-			log.Printf("TOKEN_ENGINE_TLS_CERT_FILE must not be empty when TLSMode is mtls")
-			os.Exit(1)
+			return nil, ErrTLSCertFileEmpty
 		}
 		if tlsKeyFileEnv == "" {
-			log.Printf("TOKEN_ENGINE_TLS_KEY_FILE must not be empty when TLSMode is mtls")
-			os.Exit(1)
+			return nil, ErrTLSKeyFileEmpty
 		}
 		if tlsCAFileEnv == "" {
-			log.Printf("TOKEN_ENGINE_TLS_CA_FILE must not be empty when TLSMode is mtls")
-			os.Exit(1)
+			return nil, ErrTLSCAFileEmpty
 		}
 		if callerRegistryPathEnv == "" {
-			log.Printf("TOKEN_ENGINE_CALLER_REGISTRY_PATH must not be empty when TLSMode is mtls")
-			os.Exit(1)
+			return nil, ErrCallerRegistryPathEmpty
 		}
 	}
 
@@ -358,18 +371,19 @@ func Load() (*Config, error) {
 		}
 	}
 
-	if reconciliationPageSizeEnv == "" {
-		c.ReconciliationPageSize = 100
+	// ===== STEP 6: Parse boolean fields (with warnings on failure) =====
+	if backfillExpiryIndexEnv == "" {
+		c.BackfillExpiryIndex = false
 	} else {
-		pageSize, err := strconv.Atoi(reconciliationPageSizeEnv)
+		backfill, err := strconv.ParseBool(backfillExpiryIndexEnv)
 		if err != nil {
-			log.Printf("TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE parse error: %v; using default 100", err)
-			c.ReconciliationPageSize = 100
+			log.Printf("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX parse error: %v; using default false", err)
+			c.BackfillExpiryIndex = false
 		} else {
-			c.ReconciliationPageSize = pageSize
+			c.BackfillExpiryIndex = backfill
 		}
 	}
 
-	// ===== STEP 6: Return config =====
+	// ===== STEP 7: Return config =====
 	return c, nil
 }

@@ -37,13 +37,13 @@ All configuration is read from environment variables at startup. Missing require
 | `TOKEN_ENGINE_IDEMPOTENCY_TTL` | `24h` | Idempotency key TTL in Redis. Must be at least 2x the caller's maximum retry duration. |
 | `TOKEN_ENGINE_LOCK_TTL` | `30s` | TTL for all distributed lock keys. Must be long enough for a full key rotation write under degraded Redis. |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | `5m` | Time between reconciliation passes. |
-| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | `100` | Tokens fetched per `ListTokens` page during reconciliation. |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | `1m` | Minimum elapsed time since last key generation before a new rotation is attempted. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTLP gRPC endpoint for trace export. Tracing is disabled when empty. |
 | `TOKEN_ENGINE_CALLER_REGISTRY_PATH` | _(empty)_ | Path to caller registry YAML. All callers are permitted when empty. |
 | `TOKEN_ENGINE_STATIC_CALLER_KEYS` | _(empty)_ | Comma-separated static API keys for non-mtls authentication. |
 | `TOKEN_ENGINE_MAX_CONNECTION_AGE` | `30m` | gRPC keepalive `MaxConnectionAge`. |
 | `TOKEN_ENGINE_MAX_CONNECTION_AGE_GRACE` | `5m` | gRPC keepalive `MaxConnectionAgeGrace`. |
+| `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` | `false` | Runs the one-time jwtauth v1.1.0 expiry-index migration at startup when `true`. See [§12](#12-one-time-expiry-index-backfill-after-jwtauth-v110-upgrade). |
 
 ## 4. Multi-Audience Token Design Guidance
 
@@ -94,3 +94,17 @@ Operator guidance (R3): configure your JWT validation library to require `RS256`
 Before v0.6, Token Engine required single-replica deployment to avoid concurrent key rotation and reconciliation races. Running multiple replicas without coordination would result in duplicate key material and inconsistent refresh token state.
 
 v0.6 lifts this constraint by introducing distributed locks (`internal/lock.RedisLock`) for all key rotation and reconciliation operations. Each replica acquires a per-tenant lock before rotating keys or running a reconciliation pass. The single-replica note in `deploy/k8s/deployment.yaml` reflects a conservative validation posture for the initial v0.6 rollout — once lock acquisition behaviour is confirmed under production load, replicas can be increased.
+
+## 12. One-Time Expiry-Index Backfill After jwtauth v1.1.0 Upgrade
+
+jwtauth v1.1.0 replaced `RefreshStore.Cleanup`'s full-keyspace scan with an expiry index populated at `Store` time. Tokens stored before the upgrade are never added to that index, so on an existing Redis-backed deployment they must be migrated once per tenant via `RedisRefreshStore.BackfillExpiryIndex`, or their entries in the `user_tokens:`, `audience_tokens:`, and `audience_user_tokens:` membership sets persist indefinitely — silently, with no error and no functional breakage.
+
+Set `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX=true` and restart the service during an upgrade window. The migration runs synchronously at startup, before the gRPC and HTTP servers begin serving traffic, and logs a line per tenant:
+
+```
+expiry index backfill complete tenant_id=<tenant> removed=<n> indexed=<n>
+```
+
+A per-tenant failure logs a warning and does not block startup or the remaining tenants — retry by restarting with the flag still set. **Unset `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` after a successful run.** The migration is idempotent — `BackfillExpiryIndex` is safe to run more than once, including concurrently with live traffic — but leaving the flag set means every subsequent restart re-runs the same full-keyspace scan the v1.1.0 upgrade exists to eliminate.
+
+This step is not required for tenants added after upgrading to jwtauth v1.1.0 — their tokens are indexed at `Store` time from the start.

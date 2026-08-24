@@ -64,8 +64,9 @@ var _ = Describe("ValidationInterceptor", func() {
 				key := key
 				It("returns codes.InvalidArgument naming the offending key — '"+key+"'", func() {
 					req := &tokenv1.IssueTokenRequest{
-						Sub:    "user1",
-						Claims: map[string]string{key: "value"},
+						Sub:      "user1",
+						TenantId: "t1",
+						Claims:   map[string]string{key: "value"},
 					}
 					handlerCalled := false
 					handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -83,8 +84,9 @@ var _ = Describe("ValidationInterceptor", func() {
 
 			It("does not call the handler", func() {
 				req := &tokenv1.IssueTokenRequest{
-					Sub:    "user1",
-					Claims: map[string]string{"sub": "bad"},
+					Sub:      "user1",
+					TenantId: "t1",
+					Claims:   map[string]string{"sub": "bad"},
 				}
 				handlerCalled := false
 				handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -102,6 +104,7 @@ var _ = Describe("ValidationInterceptor", func() {
 			It("returns codes.InvalidArgument naming the offending key", func() {
 				req := &tokenv1.RefreshTokenRequest{
 					RefreshToken: "tok",
+					TenantId:     "t1",
 					Claims:       map[string]string{"exp": "bad"},
 				}
 				info := &grpc.UnaryServerInfo{FullMethod: tokenv1.TokenEngine_RefreshToken_FullMethodName}
@@ -121,6 +124,7 @@ var _ = Describe("ValidationInterceptor", func() {
 			It("does not call the handler", func() {
 				req := &tokenv1.RefreshTokenRequest{
 					RefreshToken: "tok",
+					TenantId:     "t1",
 					Claims:       map[string]string{"iss": "bad"},
 				}
 				info := &grpc.UnaryServerInfo{FullMethod: tokenv1.TokenEngine_RefreshToken_FullMethodName}
@@ -136,11 +140,68 @@ var _ = Describe("ValidationInterceptor", func() {
 			})
 		})
 
+		Context("request with empty tenant_id", func() {
+			cases := []struct {
+				name   string
+				method string
+				req    interface{}
+			}{
+				{
+					name:   "IssueTokenRequest",
+					method: tokenv1.TokenEngine_IssueToken_FullMethodName,
+					req:    &tokenv1.IssueTokenRequest{Sub: "user1", TenantId: ""},
+				},
+				{
+					name:   "RefreshTokenRequest",
+					method: tokenv1.TokenEngine_RefreshToken_FullMethodName,
+					req:    &tokenv1.RefreshTokenRequest{RefreshToken: "tok", TenantId: ""},
+				},
+				{
+					name:   "RevokeTokenRequest",
+					method: tokenv1.TokenEngine_RevokeToken_FullMethodName,
+					req:    &tokenv1.RevokeTokenRequest{TenantId: ""},
+				},
+				{
+					name:   "RevokeAudienceRequest",
+					method: tokenv1.TokenEngine_RevokeAllForAudience_FullMethodName,
+					req:    &tokenv1.RevokeAudienceRequest{TenantId: ""},
+				},
+				{
+					name:   "RevokeUserRequest",
+					method: tokenv1.TokenEngine_RevokeAllUserTokens_FullMethodName,
+					req:    &tokenv1.RevokeUserRequest{TenantId: ""},
+				},
+				{
+					name:   "RevokeUserAndAudienceRequest",
+					method: tokenv1.TokenEngine_RevokeAllForUserAndAudience_FullMethodName,
+					req:    &tokenv1.RevokeUserAndAudienceRequest{TenantId: ""},
+				},
+			}
+
+			for _, c := range cases {
+				c := c
+				It("returns codes.InvalidArgument without calling the handler — "+c.name, func() {
+					info := &grpc.UnaryServerInfo{FullMethod: c.method}
+					handlerCalled := false
+					handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+						handlerCalled = true
+						return nil, nil
+					}
+
+					_, err := sut(ctx, c.req, info, handler)
+
+					Expect(handlerCalled).To(BeFalse())
+					Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				})
+			}
+		})
+
 		Context("IssueTokenRequest with valid sub and no reserved keys", func() {
 			It("calls the handler and returns its response unchanged", func() {
 				req := &tokenv1.IssueTokenRequest{
-					Sub:    "user1",
-					Claims: map[string]string{"role": "admin"},
+					Sub:      "user1",
+					TenantId: "t1",
+					Claims:   map[string]string{"role": "admin"},
 				}
 				info := &grpc.UnaryServerInfo{FullMethod: tokenv1.TokenEngine_IssueToken_FullMethodName}
 				expected := &tokenv1.TokenPair{AccessToken: "acc", RefreshToken: "ref"}

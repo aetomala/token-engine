@@ -945,10 +945,24 @@ Describe("Phase 3: RevokeAllForUserAndAudience handler", func() {
 			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(nil)
 			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
 				e, ok := v.(audit.RevocationEvent)
-				return ok && e.Scope == audit.RevocationScopeUser && e.Target == req.UserId
+				return ok && e.Scope == audit.RevocationScopeUserAudience && e.Target == req.UserId
 			})).Return(nil)
 
 			_, err := h.RevokeAllForUserAndAudience(ctx, req)
+			Expect(err).To(BeNil())
+		})
+
+		It("records caller identity and a non-zero timestamp", func() {
+			ctxWithCaller := obs.WithCallerIdentity(ctx, "caller-1")
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().RevokeAllForUserAndAudience(gomock.Any(), req.UserId, req.Audience).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
+				e, ok := v.(audit.RevocationEvent)
+				return ok && e.CallerIdentity == "caller-1" && !e.OccurredAt.IsZero()
+			})).Return(nil)
+
+			_, err := h.RevokeAllForUserAndAudience(ctxWithCaller, req)
 			Expect(err).To(BeNil())
 		})
 

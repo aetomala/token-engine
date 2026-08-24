@@ -5,7 +5,7 @@
 [![Go 1.26+](https://img.shields.io/badge/go-1.26+-blue.svg)](https://go.dev/dl/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v1.0.0 and exposes stateful JWT token management as a network API — multi-tenant, observable, and horizontally scalable.
+A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala/jwtauth) v1.1.0 and exposes stateful JWT token management as a network API — observable, horizontally scalable, and tenant-isolated.
 
 ---
 
@@ -24,6 +24,14 @@ A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala
 OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN) → Caller authorization → Idempotency → Request validation
 
 **Observability:** Prometheus metrics at `/metrics`, OpenTelemetry traces via OTLP, structured slog logging with correlation IDs, health probes at `/healthz/live` and `/healthz/ready`.
+
+---
+
+## Tenancy Model
+
+Each running instance serves exactly one tenant, fixed at startup by `TOKEN_ENGINE_ISSUER` — a client's `tenant_id` must equal that value. Multi-tenancy is achieved by running multiple instances against a shared Redis, one per tenant, each isolated by tenant ID as both the Redis key prefix and the jwtauth library namespace. See [`examples/multi-tenant`](examples/multi-tenant) for a working two-instance reference.
+
+`internal/registry.MultiTenantRegistry` internally supports `Add`/`Drain`/`Remove` for runtime tenant lifecycle, but these are not exposed through any RPC or admin endpoint today — the shipped service calls `Add` once at startup for the single configured tenant and never calls `Drain` or `Remove`. Onboarding a new tenant currently requires starting a new instance, not registering one into a running process.
 
 ---
 
@@ -63,7 +71,7 @@ The gRPC server starts on `:9090` and the HTTP server (health + metrics) on `:80
 
 **Connect a client:**
 ```go
-conn, err := grpc.Dial(":9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+conn, err := grpc.NewClient(":9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := tokenv1.NewTokenEngineClient(conn)
 
 resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
@@ -102,7 +110,6 @@ All configuration is via environment variables. The service exits fatally at sta
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | string | `` | no-op tracer (no traces) |
 | `TOKEN_ENGINE_LOCK_TTL` | duration | `30s` | warning + default |
 | `TOKEN_ENGINE_RECONCILIATION_INTERVAL` | duration | `5m` | warning + default |
-| `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` | int | `100` | warning + default |
 | `TOKEN_ENGINE_ROTATION_WINDOW_GUARD` | duration | `1m` | warning + default |
 
 **`TOKEN_ENGINE_STATIC_CALLER_KEYS` format:** `apikey1=caller-identity-1,apikey2=caller-identity-2`
@@ -274,7 +281,7 @@ make ci
 Pre-built multi-platform images (`linux/amd64`, `linux/arm64`) are published automatically on every release tag:
 
 ```bash
-docker pull docker.io/angeltomala/token-engine:v1.0.0
+docker pull docker.io/angeltomala/token-engine:v1.1.0
 ```
 
 See [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) for full deployment configuration.
@@ -305,6 +312,7 @@ See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines,
 | v0.8 | ✅ Complete | `doc/MIGRATION.md` per-version upgrade guide, `client/` Go SDK package, `examples/grpc-client` + `examples/mtls-client`, ADR-007 through ADR-010 filed, `docs/` consolidated into `doc/` |
 | v0.9 | ✅ Complete | `docker-compose.yaml` single-command local stack, `examples/custom-claims` + `examples/multi-tenant`, all four examples as independent Go modules with per-example READMEs |
 | v1.0 | ✅ Complete | Production readiness — true refresh token rotation, populated `access_token_expires_in` / `refresh_token_expires_in`, `NewReconcilerChecker` for `/healthz/ready`, `PERFORMANCE.md` RPC latency baseline, pre-1.0 correctness audit |
+| v1.1 | ✅ Complete | jwtauth v1.1.0 upgrade (expiry-indexed `Cleanup`, `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` one-time migration), `config.Load()` returns sentinel errors instead of exiting, tenant_id/audit-event/static-caller-key correctness fixes, reconciler simplified to one cleanup call per tenant per pass, `UPGRADING.md` consolidated into `doc/MIGRATION.md`, CI reliability fixes |
 
 ---
 
