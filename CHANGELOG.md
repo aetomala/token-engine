@@ -59,6 +59,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   API rate-limit error — `bufbuild/buf-setup-action@v1` now receives `github_token` so its
   download-URL lookup authenticates against the repo's own rate limit instead of the shared
   anonymous pool
+- Fixed CI intermittently failing at the `golangci-lint` step on a remote JSON Schema fetch
+  timeout — `golangci-lint-action@v9` now runs with `verify: false`, removing the network
+  dependency on `golangci-lint.run`; the subsequent `golangci-lint run` step already
+  exercises `.golangci.yml` directly
 
 ## [v1.0.0] — 2026-06-18
 
