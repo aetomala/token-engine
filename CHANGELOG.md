@@ -31,8 +31,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bumped `github.com/aetomala/jwtauth` to v1.1.0 — `RefreshStore.Cleanup` discovery cost drops
   from O(n) to O(log n + k) (Redis) / O(k log n) (Memory), compounding with the #97 fix that
   already reduced call frequency to once per tenant per pass. Tokens stored before this upgrade
-  require a one-time backfill to be covered by the new expiry index — see the next release note
-  in this milestone once the backfill capability ships
+  require a one-time backfill to be covered by the new expiry index — see
+  `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` above
 
 ### Fixed
 
