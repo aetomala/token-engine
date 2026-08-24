@@ -42,6 +42,7 @@ var _ = Describe("Config", func() {
 		os.Unsetenv("TOKEN_ENGINE_LOCK_TTL")
 		os.Unsetenv("TOKEN_ENGINE_RECONCILIATION_INTERVAL")
 		os.Unsetenv("TOKEN_ENGINE_ROTATION_WINDOW_GUARD")
+		os.Unsetenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX")
 	}
 
 	AfterEach(func() {
@@ -495,6 +496,61 @@ var _ = Describe("Config", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.RotationWindowGuard).To(Equal(1 * time.Minute))
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX absent", func() {
+		It("defaults to false", func() {
+			setRequiredEnvVars()
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX set to true", func() {
+		It("parses and stores true", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "true")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeTrue())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX set to false", func() {
+		It("parses and stores false", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "false")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
+
+			cleanupEnvVars()
+		})
+	})
+
+	Context("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX parse failure", func() {
+		It("logs warning and uses default false", func() {
+			setRequiredEnvVars()
+			os.Setenv("TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX", "not-a-bool")
+
+			cfg, err := config.Load()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.BackfillExpiryIndex).To(BeFalse())
 
 			cleanupEnvVars()
 		})
