@@ -168,7 +168,7 @@ func main() {
 	}
 
 	// ===== Stores =====
-	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
+	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL, cfg.LockTTL)
 
 	// ===== Caller Registry =====
 	var callerReg registry.CallerRegistry

@@ -9,6 +9,20 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the idempotency interceptor allowing concurrent requests with the same idempotency
+  key to both reach the handler — the key is now claimed atomically before the handler runs;
+  a concurrent duplicate receives `codes.Aborted` instead of racing the first request or
+  receiving a duplicate result (see [ADR-012](doc/adr/ADR-012-idempotency-concurrency-claim.md))
+
+### Changed
+
+- `IdempotencyStore` gained a `Set` method and a second construction-time TTL for pending
+  claims (reusing `TOKEN_ENGINE_LOCK_TTL`); stored idempotency records are now versioned —
+  records written before this change are still read correctly during their remaining TTL
+  window
+
 ## [v1.1.0] — 2026-08-24
 
 ### Added

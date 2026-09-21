@@ -81,7 +81,9 @@ Operator responsibility (R2): implement a JTI cache in your API gateway or middl
 
 A TOCTOU race exists when two concurrent `RefreshToken` RPCs arrive with the same refresh JTI before either has completed. Both may read the token as valid, then both attempt to issue a new access token and rotate the refresh token. The second write will fail or succeed depending on Redis atomicity, but the first caller may observe a revoked refresh token on their next call.
 
-Mitigation pattern (R1): implement single-flight deduplication at the API gateway keyed on the refresh JTI. Only one in-flight refresh per JTI should reach Token Engine at a time. The idempotency interceptor provides a second layer of protection for callers that include an `X-Idempotency-Key` header, but single-flight is the preferred mitigation because it operates without requiring client cooperation.
+Mitigation pattern (R1): implement single-flight deduplication at the API gateway keyed on the refresh JTI. Only one in-flight refresh per JTI should reach Token Engine at a time. Single-flight is the preferred mitigation because it operates without requiring client cooperation and covers every caller, including those that omit `X-Idempotency-Key`.
+
+For callers that do include `X-Idempotency-Key`, the idempotency interceptor provides a second, genuine layer of protection (see ADR-012): the interceptor atomically claims the key before the handler runs, so at most one concurrent request with the same key reaches the handler. A losing concurrent request receives `codes.Aborted` immediately and should retry — it does not race the winning request or receive a duplicate result. This protection is scoped to the idempotency key, not the refresh JTI; a caller that varies its idempotency key across retries, or omits the header, gets no protection from this interceptor and depends entirely on gateway single-flight.
 
 ## 10. RS256 Algorithm Invariant Guidance (R3)
 
