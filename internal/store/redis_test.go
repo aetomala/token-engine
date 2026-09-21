@@ -26,7 +26,7 @@ var _ = Describe("RedisIdempotencyStore", func() {
 		mr, err = miniredis.Run()
 		Expect(err).NotTo(HaveOccurred())
 		client = redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		sut = store.NewRedisIdempotencyStore(client, 1*time.Minute)
+		sut = store.NewRedisIdempotencyStore(client, 1*time.Minute, 10*time.Second)
 	})
 
 	AfterEach(func() {
@@ -71,7 +71,7 @@ var _ = Describe("RedisIdempotencyStore", func() {
 				errorMr, err := miniredis.Run()
 				Expect(err).NotTo(HaveOccurred())
 				errorClient := redis.NewClient(&redis.Options{Addr: errorMr.Addr()})
-				errorSut := store.NewRedisIdempotencyStore(errorClient, 1*time.Minute)
+				errorSut := store.NewRedisIdempotencyStore(errorClient, 1*time.Minute, 10*time.Second)
 				errorMr.Close() // Close before the call to force a connection error
 
 				val, hit, getErr := errorSut.Get(ctx, "key")
@@ -93,12 +93,13 @@ var _ = Describe("RedisIdempotencyStore", func() {
 				Expect(stored).To(Equal("newvalue"))
 			})
 
-			It("applies the TTL configured at construction", func() {
+			It("applies the pendingTTL configured at construction, not ttl", func() {
 				_, err := sut.SetNX(ctx, "ttlkey", []byte("v"))
 				Expect(err).NotTo(HaveOccurred())
 
 				ttl := mr.TTL("ttlkey")
 				Expect(ttl).To(BeNumerically(">", 0))
+				Expect(ttl).To(BeNumerically("<=", 10*time.Second))
 			})
 		})
 
@@ -122,12 +123,54 @@ var _ = Describe("RedisIdempotencyStore", func() {
 				errorMr, err := miniredis.Run()
 				Expect(err).NotTo(HaveOccurred())
 				errorClient := redis.NewClient(&redis.Options{Addr: errorMr.Addr()})
-				errorSut := store.NewRedisIdempotencyStore(errorClient, 1*time.Minute)
+				errorSut := store.NewRedisIdempotencyStore(errorClient, 1*time.Minute, 10*time.Second)
 				errorMr.Close() // Close before the call to force a connection error
 
 				ok, setErr := errorSut.SetNX(ctx, "key", []byte("v"))
 
 				Expect(ok).To(BeFalse())
+				Expect(setErr).To(HaveOccurred())
+			})
+		})
+
+		Context("Set", func() {
+			It("stores the value in Redis and returns nil", func() {
+				err := sut.Set(ctx, "newkey", []byte("newvalue"))
+
+				Expect(err).NotTo(HaveOccurred())
+
+				stored, _ := mr.Get("newkey")
+				Expect(stored).To(Equal("newvalue"))
+			})
+
+			It("overwrites an existing value", func() {
+				mr.Set("existingkey", "original")
+
+				err := sut.Set(ctx, "existingkey", []byte("overwrite"))
+
+				Expect(err).NotTo(HaveOccurred())
+
+				stored, _ := mr.Get("existingkey")
+				Expect(stored).To(Equal("overwrite"))
+			})
+
+			It("applies the ttl configured at construction, not pendingTTL", func() {
+				err := sut.Set(ctx, "ttlkey", []byte("v"))
+				Expect(err).NotTo(HaveOccurred())
+
+				ttl := mr.TTL("ttlkey")
+				Expect(ttl).To(BeNumerically(">", 10*time.Second))
+			})
+
+			It("returns an error when Redis returns an error", func() {
+				errorMr, err := miniredis.Run()
+				Expect(err).NotTo(HaveOccurred())
+				errorClient := redis.NewClient(&redis.Options{Addr: errorMr.Addr()})
+				errorSut := store.NewRedisIdempotencyStore(errorClient, 1*time.Minute, 10*time.Second)
+				errorMr.Close() // Close before the call to force a connection error
+
+				setErr := errorSut.Set(ctx, "key", []byte("v"))
+
 				Expect(setErr).To(HaveOccurred())
 			})
 		})
@@ -167,6 +210,14 @@ var _ = Describe("NoOpIdempotencyStore", func() {
 				ok, err := sut.SetNX(ctx, "any-key", []byte("v"))
 
 				Expect(ok).To(BeTrue())
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("Set", func() {
+			It("always returns nil", func() {
+				err := sut.Set(ctx, "any-key", []byte("v"))
+
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})

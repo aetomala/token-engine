@@ -6,14 +6,19 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
 	"github.com/aetomala/token-engine/internal/interceptor"
 	"github.com/aetomala/token-engine/internal/observability"
+	"github.com/aetomala/token-engine/internal/store"
 	"github.com/aetomala/token-engine/internal/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -276,7 +281,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 		})
 
-		Context("when x-idempotency-key is present — cache miss, handler succeeds", func() {
+		Context("when x-idempotency-key is present — claim succeeds, handler succeeds", func() {
 			var (
 				ctxWithMD   context.Context
 				req         *tokenv1.IssueTokenRequest
@@ -289,9 +294,10 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				expectedKey = "idempotency:tenant1:IssueToken:client-key-1"
 			})
 
-			It("calls store.Get with the constructed key", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
+			It("calls store.SetNX to claim the key before calling the handler", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handler := func(ctxIn context.Context, req interface{}) (interface{}, error) {
@@ -301,11 +307,19 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 
-			It("calls store.SetNX with the marshaled response and constructed key", func() {
+			It("calls store.Set to promote the claim with an envelope wrapping the marshaled response", func() {
 				expectedResp := &tokenv1.TokenPair{}
 				marshaledBytes, _ := proto.Marshal(expectedResp)
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, marshaledBytes).Return(true, nil)
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, value []byte) error {
+						resp, isCompleted, err := interceptor.ResolveExistingRecordForTest(value)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(isCompleted).To(BeTrue())
+						respBytes, _ := proto.Marshal(resp)
+						Expect(respBytes).To(Equal(marshaledBytes))
+						return nil
+					})
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -315,8 +329,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 
 			It("increments token_engine_idempotency_total with result=miss", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
 					"rpc_method": "/token.v1.TokenEngine/IssueToken",
@@ -330,8 +344,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 
 			It("returns the handler's response", func() {
 				expectedResp := &tokenv1.TokenPair{}
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -343,7 +357,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 		})
 
-		Context("when x-idempotency-key is present — cache miss, handler returns error", func() {
+		Context("when x-idempotency-key is present — claim succeeds, handler returns error", func() {
 			var (
 				ctxWithMD   context.Context
 				req         *tokenv1.IssueTokenRequest
@@ -358,9 +372,9 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				handlerErr = status.Error(codes.Internal, "handler failed")
 			})
 
-			It("does not call store.SetNX", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			It("does not call store.Set", func() {
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -370,7 +384,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 
 			It("returns the handler error", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -381,7 +395,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 
 			It("increments token_engine_idempotency_total with result=miss", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
 					"rpc_method": "/token.v1.TokenEngine/IssueToken",
@@ -394,7 +408,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 		})
 
-		Context("when x-idempotency-key is present — cache hit", func() {
+		Context("when x-idempotency-key is present — claim fails, existing record is completed (legacy bare-TokenPair)", func() {
 			var (
 				ctxWithMD   context.Context
 				req         *tokenv1.IssueTokenRequest
@@ -414,8 +428,9 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 
 			It("returns the unmarshaled cached response without calling the handler", func() {
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
 				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handlerCalled := false
@@ -428,18 +443,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				Expect(handlerCalled).To(BeFalse())
 			})
 
-			It("does not call store.SetNX", func() {
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-
 			It("increments token_engine_idempotency_total with result=hit", func() {
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
 				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "hit",
@@ -453,35 +458,18 @@ var _ = Describe("IdempotencyInterceptor", func() {
 			})
 		})
 
-		Context("when store.Get returns an error", func() {
-			var (
-				ctxWithMD context.Context
-				req       *tokenv1.IssueTokenRequest
-				storeErr  error
-			)
+		Context("when x-idempotency-key is present — claim fails, existing record is completed (versioned envelope)", func() {
+			It("returns the unmarshaled cached response without calling the handler", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
+				expectedKey := "idempotency:tenant1:IssueToken:client-key-1"
+				cachedResp := &tokenv1.TokenPair{AccessToken: "cached-token"}
+				respBytes, err := proto.Marshal(cachedResp)
+				Expect(err).NotTo(HaveOccurred())
+				envelopeBytes := interceptor.EncodeCompletedRecordForTest(respBytes)
 
-			BeforeEach(func() {
-				req = &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD = metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
-				storeErr = errors.New("redis connection failed")
-			})
-
-			It("logs the error at Warn level", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, storeErr)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-
-			It("calls the handler without failing the RPC", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, storeErr)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
+				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(envelopeBytes, true, nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 				handlerCalled := false
@@ -489,28 +477,81 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					handlerCalled = true
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				resp, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(handlerCalled).To(BeTrue())
-			})
-
-			It("increments token_engine_idempotency_total with result=miss", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, storeErr)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
-					"result":     "miss",
-					"rpc_method": "/token.v1.TokenEngine/IssueToken",
-				})
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(handlerCalled).To(BeFalse())
+				respTokenPair, ok := resp.(*tokenv1.TokenPair)
+				Expect(ok).To(BeTrue())
+				Expect(respTokenPair.AccessToken).To(Equal(cachedResp.AccessToken))
 			})
 		})
 
-		Context("when store.SetNX returns an error", func() {
+		Context("when x-idempotency-key is present — claim fails, existing record is still pending (concurrent duplicate)", func() {
+			It("returns codes.Aborted without calling the handler", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
+				expectedKey := "idempotency:tenant1:IssueToken:client-key-1"
+				pendingBytes := interceptor.PendingRecordForTest()
+
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
+				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(pendingBytes, true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any()).Times(0)
+
+				handlerCalled := false
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					handlerCalled = true
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(status.Code(err)).To(Equal(codes.Aborted))
+				Expect(handlerCalled).To(BeFalse())
+			})
+		})
+
+		Context("when claim fails and store.Get returns an error", func() {
+			It("logs the error at Warn level and returns codes.Aborted without calling the handler", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
+				storeErr := errors.New("redis connection failed")
+
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, storeErr)
+				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+
+				handlerCalled := false
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					handlerCalled = true
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(status.Code(err)).To(Equal(codes.Aborted))
+				Expect(handlerCalled).To(BeFalse())
+			})
+		})
+
+		Context("when claim fails and the existing record cannot be unmarshaled", func() {
+			It("logs the error at Warn level and returns codes.Aborted without calling the handler", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
+				invalidBytes := []byte("not-proto")
+
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(invalidBytes, true, nil)
+				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+
+				handlerCalled := false
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					handlerCalled = true
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(status.Code(err)).To(Equal(codes.Aborted))
+				Expect(handlerCalled).To(BeFalse())
+			})
+		})
+
+		Context("when store.SetNX (claim) returns an error", func() {
 			var (
 				ctxWithMD context.Context
 				req       *tokenv1.IssueTokenRequest
@@ -523,136 +564,10 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				setNXErr = errors.New("redis write failed")
 			})
 
-			It("logs the error at Warn level", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+			It("logs the error at Warn level and degrades open — calls the handler anyway", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-
-			It("does not fail the RPC", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			It("returns the handler's response", func() {
-				expectedResp := &tokenv1.TokenPair{}
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return expectedResp, nil
-				}
-				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-				Expect(resp).To(Equal(expectedResp))
-			})
-
-			It("increments token_engine_idempotency_total with result=miss", func() {
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
-					"result":     "miss",
-					"rpc_method": "/token.v1.TokenEngine/IssueToken",
-				})
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-		})
-
-		Context("when store.SetNX returns false (concurrent write)", func() {
-			It("does not log an error", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
-
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
-				mockLogger.EXPECT().Error(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-
-			It("returns the handler's response", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
-				expectedResp := &tokenv1.TokenPair{}
-
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return expectedResp, nil
-				}
-				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-				Expect(resp).To(Equal(expectedResp))
-			})
-
-			It("increments token_engine_idempotency_total with result=miss", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
-
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
-					"result":     "miss",
-					"rpc_method": "/token.v1.TokenEngine/IssueToken",
-				})
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-		})
-
-		Context("when cached bytes cannot be unmarshaled", func() {
-			It("logs the error at Warn level", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
-				invalidBytes := []byte("not-proto")
-
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(invalidBytes, true, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
-				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
-
-				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-					return &tokenv1.TokenPair{}, nil
-				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
-			})
-
-			It("treats the entry as a miss and calls the handler", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
-				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "ck"))
-				invalidBytes := []byte("not-proto")
-
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(invalidBytes, true, nil)
-				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
@@ -661,8 +576,38 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					handlerCalled = true
 					return &tokenv1.TokenPair{}, nil
 				}
-				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(handlerCalled).To(BeTrue())
+			})
+
+			It("returns the handler's response", func() {
+				expectedResp := &tokenv1.TokenPair{}
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return expectedResp, nil
+				}
+				resp, _ := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(resp).To(Equal(expectedResp))
+			})
+
+			It("increments token_engine_idempotency_total with result=miss", func() {
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, setNXErr)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
+					"result":     "miss",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
+				})
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, _ = sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 			})
 		})
 
@@ -672,8 +617,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "req-abc"))
 				expectedKey := "idempotency:acme:IssueToken:req-abc"
 
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -687,8 +632,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "req-xyz"))
 				expectedKey := "idempotency:default:IssueToken:req-xyz"
 
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -702,8 +647,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "req-123"))
 				expectedKey := "idempotency:globalcorp:IssueToken:req-123"
 
-				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -718,8 +663,8 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				req := &tokenv1.IssueTokenRequest{TenantId: "t"}
 				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "k"))
 
-				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
 				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
 					"result":     "miss",
 					"rpc_method": "/token.v1.TokenEngine/IssueToken",
@@ -752,38 +697,38 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				})
 			})
 
-			Context("when x-idempotency-key is present — cache miss", func() {
-				It("calls Get BEFORE handler, then SetNX after handler success", func() {
+			Context("when x-idempotency-key is present — claim succeeds", func() {
+				It("calls SetNX (claim) BEFORE handler, then Set (promote) after handler success", func() {
 					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
 					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
 					expectedKey := "idempotency:tenant1:RefreshToken:refresh-key-1"
 
-					getOrder := 0
+					claimOrder := 0
 					handlerOrder := 0
-					var getCallOrder int
+					var claimCallOrder int
 
-					mockStore.EXPECT().Get(gomock.Any(), expectedKey).DoAndReturn(
-						func(_ context.Context, _ string) ([]byte, bool, error) {
-							getCallOrder = getOrder
-							getOrder++
-							return nil, false, nil
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).DoAndReturn(
+						func(_ context.Context, _ string, _ []byte) (bool, error) {
+							claimCallOrder = claimOrder
+							claimOrder++
+							return true, nil
 						})
-					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
-						handlerOrder = getOrder
+						handlerOrder = claimOrder
 						return &tokenv1.TokenPair{}, nil
 					}
 					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(getCallOrder).To(Equal(0))
+					Expect(claimCallOrder).To(Equal(0))
 					Expect(handlerOrder).To(Equal(1))
 				})
 			})
 
-			Context("when x-idempotency-key is present — cache hit", func() {
+			Context("when x-idempotency-key is present — claim fails, existing record completed", func() {
 				It("returns cached response without calling handler", func() {
 					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
 					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
@@ -791,8 +736,9 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					cachedResp := &tokenv1.TokenPair{}
 					cachedBytes, _ := proto.Marshal(cachedResp)
 
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
 					mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(cachedBytes, true, nil)
-					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 					handlerCalled := false
@@ -807,15 +753,15 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				})
 			})
 
-			Context("when store Get returns error", func() {
-				It("logs Warn and calls handler (treat as miss)", func() {
+			Context("when x-idempotency-key is present — claim fails, existing record still pending (concurrent duplicate)", func() {
+				It("returns codes.Aborted without calling the handler", func() {
 					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
 					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+					expectedKey := "idempotency:tenant1:RefreshToken:refresh-key-1"
+					pendingBytes := interceptor.PendingRecordForTest()
 
-					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, errors.New("redis down"))
-					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
-					mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
+					mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(pendingBytes, true, nil)
 
 					handlerCalled := false
 					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -824,18 +770,39 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					}
 					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(handlerCalled).To(BeTrue())
+					Expect(status.Code(err)).To(Equal(codes.Aborted))
+					Expect(handlerCalled).To(BeFalse())
 				})
 			})
 
-			Context("when handler returns error on miss", func() {
-				It("does not call SetNX", func() {
+			Context("when claim fails and store Get returns an error", func() {
+				It("logs Warn and returns codes.Aborted without calling the handler", func() {
 					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
 					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
 
-					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, false, errors.New("redis down"))
+					mockLogger.EXPECT().Warn(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(status.Code(err)).To(Equal(codes.Aborted))
+					Expect(handlerCalled).To(BeFalse())
+				})
+			})
+
+			Context("when claim succeeds and handler returns error", func() {
+				It("does not call Set", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
 
 					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
@@ -849,6 +816,126 @@ var _ = Describe("IdempotencyInterceptor", func() {
 		})
 
 	}) // Phase 3
+
+	// ===== PHASE 5: Concurrency =====
+	Describe("Phase 5: Concurrency — real store, concurrent same-key requests", func() {
+		var (
+			mr        *miniredis.Miniredis
+			client    *redis.Client
+			realStore *store.RedisIdempotencyStore
+			realSUT   grpc.UnaryServerInterceptor
+		)
+
+		BeforeEach(func() {
+			var err error
+			mr, err = miniredis.Run()
+			Expect(err).NotTo(HaveOccurred())
+			client = redis.NewClient(&redis.Options{Addr: mr.Addr()})
+			realStore = store.NewRedisIdempotencyStore(client, time.Minute, time.Minute)
+			realSUT = interceptor.NewIdempotencyInterceptor(realStore, observability.NewNoOpLogger(), observability.NewNoOpMetrics())
+		})
+
+		AfterEach(func() {
+			_ = client.Close()
+			mr.Close()
+		})
+
+		It("invokes the handler exactly once for two concurrent IssueToken requests sharing an idempotency key; the loser receives codes.Aborted", func() {
+			req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+			ctxWithMD := metadata.NewIncomingContext(context.Background(), metadata.Pairs(observability.MetadataKeyIdempotencyKey, "concurrent-key"))
+
+			var handlerCalls int32
+			release := make(chan struct{})
+			handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+				atomic.AddInt32(&handlerCalls, 1)
+				<-release
+				return &tokenv1.TokenPair{AccessToken: "tok"}, nil
+			}
+
+			type result struct {
+				resp interface{}
+				err  error
+			}
+			results := make(chan result, 2)
+			var wg sync.WaitGroup
+			wg.Add(2)
+			for i := 0; i < 2; i++ {
+				go func() {
+					defer wg.Done()
+					resp, err := realSUT(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+					results <- result{resp, err}
+				}()
+			}
+
+			// Give both goroutines a chance to reach the claim/blocked-handler point before releasing.
+			time.Sleep(100 * time.Millisecond)
+			close(release)
+			wg.Wait()
+			close(results)
+
+			Expect(atomic.LoadInt32(&handlerCalls)).To(Equal(int32(1)))
+
+			var succeeded, aborted int
+			for r := range results {
+				if r.err != nil {
+					Expect(status.Code(r.err)).To(Equal(codes.Aborted))
+					aborted++
+				} else {
+					Expect(r.resp).To(BeAssignableToTypeOf(&tokenv1.TokenPair{}))
+					succeeded++
+				}
+			}
+			Expect(succeeded).To(Equal(1))
+			Expect(aborted).To(Equal(1))
+		})
+
+		It("invokes the handler exactly once for two concurrent RefreshToken requests sharing an idempotency key; the loser receives codes.Aborted", func() {
+			req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1"}
+			ctxWithMD := metadata.NewIncomingContext(context.Background(), metadata.Pairs(observability.MetadataKeyIdempotencyKey, "concurrent-refresh-key"))
+
+			var handlerCalls int32
+			release := make(chan struct{})
+			handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+				atomic.AddInt32(&handlerCalls, 1)
+				<-release
+				return &tokenv1.TokenPair{AccessToken: "tok"}, nil
+			}
+
+			type result struct {
+				resp interface{}
+				err  error
+			}
+			results := make(chan result, 2)
+			var wg sync.WaitGroup
+			wg.Add(2)
+			for i := 0; i < 2; i++ {
+				go func() {
+					defer wg.Done()
+					resp, err := realSUT(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RefreshToken"}, handler)
+					results <- result{resp, err}
+				}()
+			}
+
+			time.Sleep(100 * time.Millisecond)
+			close(release)
+			wg.Wait()
+			close(results)
+
+			Expect(atomic.LoadInt32(&handlerCalls)).To(Equal(int32(1)))
+
+			var succeeded, aborted int
+			for r := range results {
+				if r.err != nil {
+					Expect(status.Code(r.err)).To(Equal(codes.Aborted))
+					aborted++
+				} else {
+					succeeded++
+				}
+			}
+			Expect(succeeded).To(Equal(1))
+			Expect(aborted).To(Equal(1))
+		})
+	})
 })
 
 var _ = Describe("ValidationInterceptor (v0.1 stub)", func() {

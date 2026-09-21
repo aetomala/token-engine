@@ -49,6 +49,7 @@ var _ = BeforeSuite(func() {
 		StaticCallerKeys: map[string]string{"test-api-key": "test-caller"},
 		RedisAddr:        mr.Addr(),
 		IdempotencyTTL:   24 * time.Hour,
+		LockTTL:          30 * time.Second,
 		JWKSCacheMaxAge:  5 * time.Minute,
 	}
 
@@ -75,7 +76,7 @@ var _ = BeforeSuite(func() {
 	km = kms[cfg.Issuer]
 
 	// ===== Idempotency store =====
-	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
+	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL, cfg.LockTTL)
 
 	// ===== Interceptors (same order as main.go, otelgrpc skipped — noop OTel not needed) =====
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
