@@ -20,7 +20,7 @@ coverage:
 lint:
 	go vet $(PKG)
 	golangci-lint run $(PKG)
-	govulncheck $(PKG)
+	./scripts/govulncheck-gate.sh
 
 proto-gen:
 	buf generate

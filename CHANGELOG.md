@@ -9,6 +9,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Chore
+
+- Bumped `google.golang.org/grpc` to v1.84.0, closing GO-2026-6348 (heap memory exhaustion
+  via HTTP/2 DATA frame fragmentation). GO-2026-6443 (server panic via missing authority/Host
+  headers) remains open — no stable grpc release contains the fix yet; tracked in #131 and
+  allowlisted in `scripts/govulncheck-gate.sh` with a reference back to that issue
+- Added `scripts/govulncheck-gate.sh`, wired into `make lint`, CI, and `run-ci-locally.sh` in
+  place of a bare `govulncheck` invocation — fails on any finding except those explicitly
+  allowlisted with a tracking issue and a reason a dependency bump cannot close them yet
+
 ## [v1.1.0] — 2026-08-24
 
 ### Added
