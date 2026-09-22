@@ -101,6 +101,17 @@ var _ = Describe("RedisIdempotencyStore", func() {
 				Expect(ttl).To(BeNumerically(">", 0))
 				Expect(ttl).To(BeNumerically("<=", 10*time.Second))
 			})
+
+			It("actually expires the key once pendingTTL elapses, not just sets a TTL value", func() {
+				_, err := sut.SetNX(ctx, "expiring-claim", []byte("v"))
+				Expect(err).NotTo(HaveOccurred())
+
+				mr.FastForward(11 * time.Second)
+
+				_, hit, getErr := sut.Get(ctx, "expiring-claim")
+				Expect(getErr).NotTo(HaveOccurred())
+				Expect(hit).To(BeFalse())
+			})
 		})
 
 		Context("when key already exists", func() {
@@ -160,6 +171,17 @@ var _ = Describe("RedisIdempotencyStore", func() {
 
 				ttl := mr.TTL("ttlkey")
 				Expect(ttl).To(BeNumerically(">", 10*time.Second))
+			})
+
+			It("actually expires the key once ttl elapses, not just sets a TTL value", func() {
+				err := sut.Set(ctx, "expiring-record", []byte("v"))
+				Expect(err).NotTo(HaveOccurred())
+
+				mr.FastForward(61 * time.Second)
+
+				_, hit, getErr := sut.Get(ctx, "expiring-record")
+				Expect(getErr).NotTo(HaveOccurred())
+				Expect(hit).To(BeFalse())
 			})
 
 			It("returns an error when Redis returns an error", func() {

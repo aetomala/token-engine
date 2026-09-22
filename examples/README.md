@@ -17,6 +17,7 @@ See [`docker-compose.yaml`](../docker-compose.yaml) for the default credentials
 | `grpc-client` | Static API key | Minimal gRPC client — `IssueToken` and token pair output |
 | `mtls-client` | mTLS certificate | Certificate-based auth with `WithMTLS` |
 | `custom-claims` | Static API key | Custom claims issuance and JWKS-based JWT validation |
+| `idempotency` | Static API key | Retry-safe requests via `x-idempotency-key`, content-mismatch rejection, and the deprecated request-field fallback |
 | `multi-tenant` | Static API key | Per-tenant isolation and cross-tenant token rejection |
 
 ---
@@ -57,6 +58,21 @@ TOKEN_ENGINE_STATIC_KEY=devkey go run .
 
 Custom claims in `IssueTokenRequest.Claims` are promoted to top-level JWT fields — they
 are not nested under a `"claims"` key in the token payload.
+
+## idempotency
+
+Demonstrates the `x-idempotency-key` metadata header: a retried request with the same key
+and the same content returns the exact cached response instead of issuing a new token pair;
+the same key reused with different content (a different `sub`) is rejected with
+`codes.FailedPrecondition` rather than silently returning a mismatched response. Also shows
+the deprecated `idempotency_key` request field still working as a fallback when the header
+is absent — see [ADR-013](../doc/adr/ADR-013-idempotency-request-fingerprint.md) and
+[ADR-015](../doc/adr/ADR-015-idempotency-key-field-deprecation.md).
+
+```bash
+cd examples/idempotency
+TOKEN_ENGINE_STATIC_KEY=devkey go run .
+```
 
 ## multi-tenant
 
