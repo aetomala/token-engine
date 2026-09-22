@@ -13,11 +13,20 @@ type IdempotencyStore interface {
 	Get(ctx context.Context, key string) ([]byte, bool, error)
 
 	// SetNX stores value at key if and only if the key does not already exist.
-	// The TTL is determined by the store implementation's construction-time config.
+	// The TTL is determined by the store implementation's construction-time pending-claim
+	// config — it is intentionally short, distinct from the TTL applied by Set, since SetNX
+	// is used to claim a key before a handler runs, not to cache its final result.
 	// Returns (true, nil) if the key was written.
 	// Returns (false, nil) if the key already existed — concurrent write, not an error.
 	// Returns (false, err) on store error.
 	SetNX(ctx context.Context, key string, value []byte) (bool, error)
+
+	// Set unconditionally overwrites key with value, applying the store implementation's
+	// construction-time response TTL. Used to promote a pending claim written by SetNX to a
+	// completed record once its handler has finished successfully.
+	// Returns nil on success.
+	// Returns err on store error.
+	Set(ctx context.Context, key string, value []byte) error
 }
 
 // NoOpIdempotencyStore is a no-operation IdempotencyStore.
@@ -41,4 +50,9 @@ func (n *NoOpIdempotencyStore) Get(ctx context.Context, key string) ([]byte, boo
 // SetNX returns (true, nil) for all inputs — always signals "written successfully".
 func (n *NoOpIdempotencyStore) SetNX(ctx context.Context, key string, value []byte) (bool, error) {
 	return true, nil
+}
+
+// Set returns nil for all inputs.
+func (n *NoOpIdempotencyStore) Set(ctx context.Context, key string, value []byte) error {
+	return nil
 }

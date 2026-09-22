@@ -16,7 +16,10 @@ service TokenEngine {
 message IssueTokenRequest {
   string sub                  = 1;
   string tenant_id            = 2;
-  string idempotency_key      = 3;
+  // Deprecated: use the x-idempotency-key gRPC metadata header instead. Still honored as a
+  // fallback when the header is absent (see ADR-014); no earlier removal than the next major
+  // version, see ADR-015.
+  string idempotency_key      = 3 [deprecated = true];
   map<string, string> claims  = 4;
   repeated string audiences   = 5;
 }
@@ -24,7 +27,10 @@ message IssueTokenRequest {
 message RefreshTokenRequest {
   string refresh_token        = 1;
   string tenant_id            = 2;
-  string idempotency_key      = 3;
+  // Deprecated: use the x-idempotency-key gRPC metadata header instead. Still honored as a
+  // fallback when the header is absent (see ADR-014); no earlier removal than the next major
+  // version, see ADR-015.
+  string idempotency_key      = 3 [deprecated = true];
   map<string, string> claims  = 4;
 }
 

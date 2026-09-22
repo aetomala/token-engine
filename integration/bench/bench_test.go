@@ -74,6 +74,7 @@ func setup() error {
 		StaticCallerKeys: map[string]string{"test-api-key": "test-caller"},
 		RedisAddr:        benchMR.Addr(),
 		IdempotencyTTL:   24 * time.Hour,
+		LockTTL:          30 * time.Second,
 		JWKSCacheMaxAge:  5 * time.Minute,
 	}
 
@@ -99,7 +100,7 @@ func setup() error {
 	benchKM = tenantReg.AllKeyManagers()[cfg.Issuer]
 
 	// ===== Shared handler (auth + idempotency + validation interceptors) =====
-	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL)
+	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL, cfg.LockTTL)
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
 	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
 		Version: 1,

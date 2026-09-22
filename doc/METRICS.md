@@ -53,7 +53,12 @@ histogram_quantile(0.50, rate(token_engine_grpc_request_duration_seconds_bucket[
 |---|---|
 | Type | Counter |
 | Description | Total number of idempotency store lookups, split by outcome |
-| Labels | `result` (`hit` or `miss`), `rpc_method` (full gRPC method path) |
+| Labels | `result` (`hit`, `miss`, or `mismatch`), `rpc_method` (full gRPC method path) |
+
+`mismatch` is emitted when a replayed idempotency key's request-content fingerprint doesn't match
+the record it was originally stored against — a caller reused a key across two logically different
+requests. See [ADR-013](adr/ADR-013-idempotency-request-fingerprint.md) and
+[operator-guide.md §13](operator-guide.md#13-idempotency-key-content-binding).
 
 **PromQL examples:**
 
@@ -65,6 +70,9 @@ rate(token_engine_idempotency_total{result="hit"}[5m])
 rate(token_engine_idempotency_total{result="hit"}[5m])
   /
 rate(token_engine_idempotency_total[5m])
+
+# Mismatch rate — a sustained non-zero rate indicates a caller-side idempotency key reuse bug
+rate(token_engine_idempotency_total{result="mismatch"}[5m])
 ```
 
 ---

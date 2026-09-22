@@ -9,6 +9,53 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.2.0] — 2026-09-22
+
+### Fixed
+
+- Fixed the idempotency interceptor allowing concurrent requests with the same idempotency
+  key to both reach the handler — the key is now claimed atomically before the handler runs;
+  a concurrent duplicate receives `codes.Aborted` instead of racing the first request or
+  receiving a duplicate result (see [ADR-012](doc/adr/ADR-012-idempotency-concurrency-claim.md))
+- Fixed the idempotency interceptor returning a cached response without checking whether a
+  replayed idempotency key matches the original request's content — a completed record now
+  carries a content fingerprint, and a key reused with different content (different subject for
+  `IssueToken`, different refresh token for `RefreshToken`) returns `codes.FailedPrecondition`
+  instead of the mismatched response (see [ADR-013](doc/adr/ADR-013-idempotency-request-fingerprint.md))
+- Fixed the `idempotency_key` request field — documented in the README, never read by the
+  server — being silently ignored; it is now honored as a fallback for the `x-idempotency-key`
+  metadata header, and a request that sets both to different values returns
+  `codes.InvalidArgument` instead of silently preferring one over the other
+  (see [ADR-014](doc/adr/ADR-014-idempotency-key-precedence.md))
+
+### Deprecated
+
+- The `idempotency_key` request field on `IssueTokenRequest`/`RefreshTokenRequest` is deprecated
+  in favor of the `x-idempotency-key` metadata header — no behavior change, it keeps working
+  exactly as before; the server now logs when a request's field contributes to key resolution so
+  actual usage is observable ahead of any future removal decision
+  (see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md))
+
+### Changed
+
+- `IdempotencyStore` gained a `Set` method and a second construction-time TTL for pending
+  claims (reusing `TOKEN_ENGINE_LOCK_TTL`); stored idempotency records are now versioned —
+  records written before this change are still read correctly during their remaining TTL
+  window
+
+### Chore
+
+- Bumped `google.golang.org/grpc` to v1.84.0, closing GO-2026-6348 (heap memory exhaustion
+  via HTTP/2 DATA frame fragmentation). GO-2026-6443 (server panic via missing authority/Host
+  headers) remains open — no stable grpc release contains the fix yet; tracked in #131 and
+  allowlisted in `scripts/govulncheck-gate.sh` with a reference back to that issue
+- Added `scripts/govulncheck-gate.sh`, wired into `make lint`, CI, and `run-ci-locally.sh` in
+  place of a bare `govulncheck` invocation — fails on any finding except those explicitly
+  allowlisted with a tracking issue and a reason a dependency bump cannot close them yet
+- Pinned the Dockerfile's builder stage to `golang:1.26.5-alpine` — the floating `golang:1.26-alpine`
+  tag had drifted behind `go.mod`'s pinned `go 1.26.5` minimum, breaking `docker compose up` /
+  `podman compose up` for anyone building the image from a clean checkout
+
 ## [v1.1.0] — 2026-08-24
 
 ### Added

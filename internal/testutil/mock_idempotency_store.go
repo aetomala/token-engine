@@ -56,6 +56,20 @@ func (mr *MockIdempotencyStoreMockRecorder) Get(ctx, key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockIdempotencyStore)(nil).Get), ctx, key)
 }
 
+// Set mocks base method.
+func (m *MockIdempotencyStore) Set(ctx context.Context, key string, value []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Set", ctx, key, value)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Set indicates an expected call of Set.
+func (mr *MockIdempotencyStoreMockRecorder) Set(ctx, key, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockIdempotencyStore)(nil).Set), ctx, key, value)
+}
+
 // SetNX mocks base method.
 func (m *MockIdempotencyStore) SetNX(ctx context.Context, key string, value []byte) (bool, error) {
 	m.ctrl.T.Helper()

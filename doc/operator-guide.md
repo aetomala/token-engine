@@ -81,7 +81,9 @@ Operator responsibility (R2): implement a JTI cache in your API gateway or middl
 
 A TOCTOU race exists when two concurrent `RefreshToken` RPCs arrive with the same refresh JTI before either has completed. Both may read the token as valid, then both attempt to issue a new access token and rotate the refresh token. The second write will fail or succeed depending on Redis atomicity, but the first caller may observe a revoked refresh token on their next call.
 
-Mitigation pattern (R1): implement single-flight deduplication at the API gateway keyed on the refresh JTI. Only one in-flight refresh per JTI should reach Token Engine at a time. The idempotency interceptor provides a second layer of protection for callers that include an `X-Idempotency-Key` header, but single-flight is the preferred mitigation because it operates without requiring client cooperation.
+Mitigation pattern (R1): implement single-flight deduplication at the API gateway keyed on the refresh JTI. Only one in-flight refresh per JTI should reach Token Engine at a time. Single-flight is the preferred mitigation because it operates without requiring client cooperation and covers every caller, including those that omit `X-Idempotency-Key`.
+
+For callers that do include `X-Idempotency-Key`, the idempotency interceptor provides a second, genuine layer of protection (see ADR-012): the interceptor atomically claims the key before the handler runs, so at most one concurrent request with the same key reaches the handler. A losing concurrent request receives `codes.Aborted` immediately and should retry — it does not race the winning request or receive a duplicate result. This protection is scoped to the idempotency key, not the refresh JTI; a caller that varies its idempotency key across retries, or omits the header, gets no protection from this interceptor and depends entirely on gateway single-flight.
 
 ## 10. RS256 Algorithm Invariant Guidance (R3)
 
@@ -108,3 +110,67 @@ expiry index backfill complete tenant_id=<tenant> removed=<n> indexed=<n>
 A per-tenant failure logs a warning and does not block startup or the remaining tenants — retry by restarting with the flag still set. **Unset `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` after a successful run.** The migration is idempotent — `BackfillExpiryIndex` is safe to run more than once, including concurrently with live traffic — but leaving the flag set means every subsequent restart re-runs the same full-keyspace scan the v1.1.0 upgrade exists to eliminate.
 
 This step is not required for tenants added after upgrading to jwtauth v1.1.0 — their tokens are indexed at `Store` time from the start.
+
+## 13. Idempotency Key Content Binding
+
+A completed idempotency record now also stores a fingerprint of the request content that produced
+it — a SHA-256 hash of the fields that determine the result (see ADR-013). For `IssueToken` that's
+subject, tenant, claims, and audiences; for `RefreshToken` it's the refresh token, tenant, and
+claims. The raw refresh token is only ever hashed, never itself written to the store.
+
+A repeated `X-Idempotency-Key` whose request content differs from the request that originally
+produced the cached response — a different `sub` for `IssueToken`, a different refresh token for
+`RefreshToken` — now returns `codes.FailedPrecondition` instead of the original response. This is
+distinct from `codes.Aborted` (returned for a genuine concurrent duplicate still in flight):
+`Aborted` means retry the same call; `FailedPrecondition` means the key itself must change before
+retrying — the caller should supply a new idempotency key.
+
+Operator guidance: treat a `FailedPrecondition` on `IssueToken` or `RefreshToken` as a caller-side
+key-management bug (idempotency keys reused across logically different requests), not a transient
+condition — retrying with the same key and content will fail again. Records written before this
+change (no stored fingerprint) are not subject to this check for the remainder of their original
+TTL — they continue returning a cache hit regardless of the replaying request's content, exactly as
+before this change.
+
+## 14. Idempotency Key Precedence Between Field and Header
+
+The idempotency key can be supplied two ways: the `idempotency_key` field on `IssueTokenRequest`/
+`RefreshTokenRequest`, or the `x-idempotency-key` gRPC metadata header. The server resolves a
+single request's effective key from whichever is present (see ADR-014):
+
+| Header | Field | Result |
+|---|---|---|
+| absent | absent | No idempotency protection — passes straight through to the handler |
+| present | absent | Header value is used |
+| absent | present | Field value is used |
+| present | present, equal | That value is used |
+| present | present, **differ** | `codes.InvalidArgument` — no claim attempted, no handler called |
+
+Operator guidance: treat `INVALID_ARGUMENT` on `IssueToken` or `RefreshToken` as a caller-side
+integration bug — the same request is carrying two different values for what it believes is one
+idempotency key, most often a client library setting the header automatically while application
+code also sets the field (or vice versa) with a stale or independently generated value. This is
+distinct from the `FailedPrecondition` case in §13: that's a content mismatch against a *previously
+stored* record; this is a conflict *within a single incoming request*, detected before the store is
+ever touched. Neither value is preferred over the other — the fix is for the caller to set only one.
+
+## 15. `idempotency_key` Request Field Is Deprecated
+
+The `idempotency_key` request field is deprecated in favor of the `x-idempotency-key` metadata
+header (see ADR-015). It keeps working exactly as described in §14 above — no behavior change,
+just a signal to migrate. New integrations should use the header exclusively.
+
+The server logs an Info-level line whenever the field contributes to resolving a request's
+effective key, so field usage is directly observable rather than assumed:
+
+- `"deprecated idempotency_key request field used; x-idempotency-key header absent"` — field-only.
+- `"deprecated idempotency_key request field used alongside x-idempotency-key header (values match)"`
+  — both present, matching (both-present-and-differing is rejected with `INVALID_ARGUMENT`
+  before this log call is reached, per §14 — it never logs).
+
+Operators planning a migration can search for either line to find which callers still set the
+field.
+
+There is no removal timeline yet. Removing the field is a breaking, `buf breaking`-flagged change
+that will not happen before the next major version, and only once observed usage supports it —
+see ADR-015's removal criteria.

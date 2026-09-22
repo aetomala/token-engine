@@ -130,7 +130,7 @@ Issues a new access + refresh token pair.
 |---|---|---|
 | `sub` | string | Subject identifier (required) |
 | `tenant_id` | string | Must equal the server's `TOKEN_ENGINE_ISSUER` (required) |
-| `idempotency_key` | string | Deduplication key — same key returns same tokens within TTL |
+| `idempotency_key` | string | **Deprecated** — use the `x-idempotency-key` metadata header instead. Still honored as a fallback when the header is unset; setting both to different values returns `INVALID_ARGUMENT`. May be removed in a future major version, see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md) |
 | `claims` | map<string,string> | Custom claims stamped on the access token |
 | `audiences` | repeated string | Audience override; defaults to `TOKEN_ENGINE_AUDIENCE` |
 
@@ -144,7 +144,7 @@ Rotates tokens using a valid refresh token. The old refresh token is revoked ato
 |---|---|---|
 | `refresh_token` | string | Current valid refresh token (required) |
 | `tenant_id` | string | Must match the tenant that issued the token (required) |
-| `idempotency_key` | string | Deduplication key |
+| `idempotency_key` | string | **Deprecated** — use the `x-idempotency-key` metadata header instead. Still honored as a fallback when the header is unset; setting both to different values returns `INVALID_ARGUMENT`. May be removed in a future major version, see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md) |
 | `claims` | map<string,string> | Custom claims on the new access token |
 
 Returns `TokenPair`.
@@ -195,6 +195,37 @@ Revokes all refresh tokens for a user within a specific audience.
 | `NOT_FOUND` | Refresh token not found |
 | `UNAVAILABLE` | Audit store unreachable — revocation RPCs only; issuance is never gated |
 | `INTERNAL` | Invalid key ID; missing kid claim; audit record failure; unexpected library error |
+| `ABORTED` | A concurrent request with the same idempotency key is already in flight; retry |
+| `FAILED_PRECONDITION` | An idempotency key was reused with different request content; use a new key |
+| `INVALID_ARGUMENT` | The `idempotency_key` field and the `x-idempotency-key` header were both set to different values on the same request; set only one |
+
+---
+
+## Idempotency
+
+`IssueToken` and `RefreshToken` support retry-safe requests via the `x-idempotency-key` gRPC
+metadata header. Send the same header value on a retried request with the same content, and you
+get back the exact response from the first call instead of a new token pair:
+
+```go
+import "google.golang.org/grpc/metadata"
+
+ctx := metadata.AppendToOutgoingContext(context.Background(), "x-idempotency-key", "req-abc-123")
+pair, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+    Sub:      "user-123",
+    TenantId: "my-service",
+})
+```
+
+- **Same key, same content, retried** → the cached response, not a second token pair.
+- **Same key, different content** (e.g. a different `sub`) → `codes.FailedPrecondition` — the key
+  is bound to the content that first used it; use a new key for a genuinely different request.
+- **A concurrent duplicate** (two requests with the same key in flight at once) → `codes.Aborted`
+  on the loser; retry.
+
+See [`examples/idempotency`](examples/idempotency) for a runnable walkthrough of all three cases,
+and [`doc/operator-guide.md`](doc/operator-guide.md) §13–15 for the full behavioral contract,
+including the deprecated `idempotency_key` request field's fallback behavior.
 
 ---
 
@@ -313,6 +344,7 @@ See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines,
 | v0.9 | ✅ Complete | `docker-compose.yaml` single-command local stack, `examples/custom-claims` + `examples/multi-tenant`, all four examples as independent Go modules with per-example READMEs |
 | v1.0 | ✅ Complete | Production readiness — true refresh token rotation, populated `access_token_expires_in` / `refresh_token_expires_in`, `NewReconcilerChecker` for `/healthz/ready`, `PERFORMANCE.md` RPC latency baseline, pre-1.0 correctness audit |
 | v1.1 | ✅ Complete | jwtauth v1.1.0 upgrade (expiry-indexed `Cleanup`, `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` one-time migration), `config.Load()` returns sentinel errors instead of exiting, tenant_id/audit-event/static-caller-key correctness fixes, reconciler simplified to one cleanup call per tenant per pass, `UPGRADING.md` consolidated into `doc/MIGRATION.md`, CI reliability fixes |
+| v1.2 | ✅ Complete | Idempotency hardening — concurrent same-key request serialization via an atomic claim (#127), request-content fingerprint binding (#128), documented `idempotency_key` field wiring (#129), field deprecated in favor of the header (#139), `examples/idempotency` |
 
 ---
 
