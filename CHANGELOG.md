@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.2.0] — 2026-09-22
+
 ### Fixed
 
 - Fixed the idempotency interceptor allowing concurrent requests with the same idempotency
