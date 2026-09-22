@@ -20,6 +20,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   carries a content fingerprint, and a key reused with different content (different subject for
   `IssueToken`, different refresh token for `RefreshToken`) returns `codes.FailedPrecondition`
   instead of the mismatched response (see [ADR-013](doc/adr/ADR-013-idempotency-request-fingerprint.md))
+- Fixed the `idempotency_key` request field — documented in the README, never read by the
+  server — being silently ignored; it is now honored as a fallback for the `x-idempotency-key`
+  metadata header, and a request that sets both to different values returns
+  `codes.InvalidArgument` instead of silently preferring one over the other
+  (see [ADR-014](doc/adr/ADR-014-idempotency-key-precedence.md))
 
 ### Changed
 

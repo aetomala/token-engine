@@ -130,7 +130,7 @@ Issues a new access + refresh token pair.
 |---|---|---|
 | `sub` | string | Subject identifier (required) |
 | `tenant_id` | string | Must equal the server's `TOKEN_ENGINE_ISSUER` (required) |
-| `idempotency_key` | string | Deduplication key — same key returns same tokens within TTL |
+| `idempotency_key` | string | Deduplication key — same key returns same tokens within TTL. Falls back to the `x-idempotency-key` metadata header when unset; setting both to different values returns `INVALID_ARGUMENT` |
 | `claims` | map<string,string> | Custom claims stamped on the access token |
 | `audiences` | repeated string | Audience override; defaults to `TOKEN_ENGINE_AUDIENCE` |
 
@@ -144,7 +144,7 @@ Rotates tokens using a valid refresh token. The old refresh token is revoked ato
 |---|---|---|
 | `refresh_token` | string | Current valid refresh token (required) |
 | `tenant_id` | string | Must match the tenant that issued the token (required) |
-| `idempotency_key` | string | Deduplication key |
+| `idempotency_key` | string | Deduplication key. Falls back to the `x-idempotency-key` metadata header when unset; setting both to different values returns `INVALID_ARGUMENT` |
 | `claims` | map<string,string> | Custom claims on the new access token |
 
 Returns `TokenPair`.

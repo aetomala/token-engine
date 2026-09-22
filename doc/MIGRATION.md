@@ -294,3 +294,45 @@ None.
   entries in the `user_tokens:`, `audience_tokens:`, and `audience_user_tokens:` membership
   sets persist indefinitely until the backfill is run — a slow, silent, unbounded growth in
   Redis memory for long-running pre-upgrade deployments.
+
+## v1.1.0 → v1.2.0
+
+### What changed
+
+Idempotency hardening across three issues (#127, #128, #129) — no config or environment variable
+changes, no breaking API changes. Automatic behavior changes to be aware of:
+
+- **Concurrent requests sharing an idempotency key are now serialized (#127).** Previously two
+  requests with the same key that both arrived before either finished could both reach the
+  handler. Now the key is claimed atomically before the handler runs; a losing concurrent
+  duplicate receives `codes.Aborted` immediately instead of racing the winning request. See
+  [ADR-012](adr/ADR-012-idempotency-concurrency-claim.md).
+- **A replayed idempotency key is now bound to the request content that produced it (#128).** A
+  completed record carries a content fingerprint; reusing a key with different content (a
+  different `sub` for `IssueToken`, a different refresh token for `RefreshToken`) returns
+  `codes.FailedPrecondition` instead of the original response. Records written before this
+  upgrade have no fingerprint and are not subject to this check for the remainder of their
+  original TTL. See [ADR-013](adr/ADR-013-idempotency-request-fingerprint.md).
+- **The `idempotency_key` request field is now honored (#129).** Previously documented in the
+  README but silently ignored by the server — only the `x-idempotency-key` metadata header
+  worked. The field now works as a fallback when the header is absent. A request that sets both
+  to different values returns `codes.InvalidArgument`. See
+  [ADR-014](adr/ADR-014-idempotency-key-precedence.md) and
+  [operator-guide.md §14](operator-guide.md#14-idempotency-key-precedence-between-field-and-header).
+
+### Required actions
+
+None. These are automatic hardening changes — no environment variables, config fields, or client
+code changes are required to benefit from them.
+
+### Behavior differences to be aware of
+
+- A caller relying on undefined behavior during a concurrent duplicate (e.g. assuming both
+  requests silently succeed) must now handle `codes.Aborted` as a retryable response.
+- A caller that reuses idempotency keys across requests with different content — previously
+  silently returning the first request's response — must now handle `codes.FailedPrecondition`
+  and supply a new key per logically distinct request.
+- A caller already setting the `idempotency_key` request field, expecting it to work per the
+  README, now actually gets the protection it always documented. A caller that (perhaps
+  unintentionally) sets both the field and the header to different values, previously ignored
+  in favor of the header, must now handle `codes.InvalidArgument` and set only one.

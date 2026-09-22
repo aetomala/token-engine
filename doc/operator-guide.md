@@ -131,3 +131,25 @@ condition — retrying with the same key and content will fail again. Records wr
 change (no stored fingerprint) are not subject to this check for the remainder of their original
 TTL — they continue returning a cache hit regardless of the replaying request's content, exactly as
 before this change.
+
+## 14. Idempotency Key Precedence Between Field and Header
+
+The idempotency key can be supplied two ways: the `idempotency_key` field on `IssueTokenRequest`/
+`RefreshTokenRequest`, or the `x-idempotency-key` gRPC metadata header. The server resolves a
+single request's effective key from whichever is present (see ADR-014):
+
+| Header | Field | Result |
+|---|---|---|
+| absent | absent | No idempotency protection — passes straight through to the handler |
+| present | absent | Header value is used |
+| absent | present | Field value is used |
+| present | present, equal | That value is used |
+| present | present, **differ** | `codes.InvalidArgument` — no claim attempted, no handler called |
+
+Operator guidance: treat `INVALID_ARGUMENT` on `IssueToken` or `RefreshToken` as a caller-side
+integration bug — the same request is carrying two different values for what it believes is one
+idempotency key, most often a client library setting the header automatically while application
+code also sets the field (or vice versa) with a stale or independently generated value. This is
+distinct from the `FailedPrecondition` case in §13: that's a content mismatch against a *previously
+stored* record; this is a conflict *within a single incoming request*, detected before the store is
+ever touched. Neither value is preferred over the other — the fix is for the caller to set only one.
