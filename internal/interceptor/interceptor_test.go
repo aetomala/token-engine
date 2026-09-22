@@ -385,12 +385,33 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+				mockLogger.EXPECT().Info(gomock.Any(), gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
 				_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("logs deprecated field usage distinguishably from the both-present case (issue #139)", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-key-1"}
+				var loggedMsg string
+
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+				mockLogger.EXPECT().Info(gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, msg string, _ ...interface{}) {
+						loggedMsg = msg
+					})
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(loggedMsg).To(ContainSubstring("header absent"))
 			})
 		})
 
@@ -403,12 +424,34 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+				mockLogger.EXPECT().Info(gomock.Any(), gomock.Any())
 
 				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 					return &tokenv1.TokenPair{}, nil
 				}
 				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("logs deprecated field usage distinguishably from the field-only case (issue #139)", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", IdempotencyKey: "same-key"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "same-key"))
+				var loggedMsg string
+
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+				mockLogger.EXPECT().Info(gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, msg string, _ ...interface{}) {
+						loggedMsg = msg
+					})
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(loggedMsg).To(ContainSubstring("values match"))
 			})
 		})
 
@@ -842,12 +885,33 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 					mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+					mockLogger.EXPECT().Info(gomock.Any(), gomock.Any())
 
 					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 						return &tokenv1.TokenPair{}, nil
 					}
 					_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
 					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("logs deprecated field usage distinguishably from the both-present case (issue #139)", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-refresh-key"}
+					var loggedMsg string
+
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+					mockLogger.EXPECT().Info(gomock.Any(), gomock.Any()).DoAndReturn(
+						func(_ context.Context, msg string, _ ...interface{}) {
+							loggedMsg = msg
+						})
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(loggedMsg).To(ContainSubstring("header absent"))
 				})
 			})
 
@@ -860,12 +924,34 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 					mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
 					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+					mockLogger.EXPECT().Info(gomock.Any(), gomock.Any())
 
 					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
 						return &tokenv1.TokenPair{}, nil
 					}
 					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
 					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("logs deprecated field usage distinguishably from the field-only case (issue #139)", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", IdempotencyKey: "same-refresh-key"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "same-refresh-key"))
+					var loggedMsg string
+
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+					mockLogger.EXPECT().Info(gomock.Any(), gomock.Any()).DoAndReturn(
+						func(_ context.Context, msg string, _ ...interface{}) {
+							loggedMsg = msg
+						})
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(loggedMsg).To(ContainSubstring("values match"))
 				})
 			})
 

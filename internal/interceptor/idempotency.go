@@ -155,6 +155,22 @@ func resolveIdempotencyKey(headerKey, fieldKey string) (string, error) {
 	}
 }
 
+// logIdempotencyKeyFieldUsage logs, at Info level, when the deprecated idempotency_key request
+// field contributed to resolving the client key — either alone (header absent) or matching a
+// header that was also present (a conflicting pair never reaches this call; resolveIdempotencyKey
+// already returned an error for it). It is a no-op when the field is unset. This is the usage
+// signal ADR-015's removal criteria depend on — it never fires for header-only requests.
+func logIdempotencyKeyFieldUsage(ctx context.Context, logger observability.Logger, fieldKey, headerKey string) {
+	if fieldKey == "" {
+		return
+	}
+	if headerKey == "" {
+		logger.Info(ctx, "deprecated idempotency_key request field used; x-idempotency-key header absent")
+		return
+	}
+	logger.Info(ctx, "deprecated idempotency_key request field used alongside x-idempotency-key header (values match)")
+}
+
 // decodeIdempotencyRecord unmarshals raw into an idempotencyRecord. Returns ok=false when raw
 // lacks the magic prefix or fails to unmarshal — the caller falls back to treating raw as a
 // legacy bare-TokenPair record.
@@ -299,6 +315,7 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 	if keyErr != nil {
 		return nil, keyErr
 	}
+	logIdempotencyKeyFieldUsage(ctx, logger, issueReq.IdempotencyKey, headerKey)
 	if clientKey == "" {
 		return handler(ctx, req)
 	}
@@ -397,6 +414,7 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 	if keyErr != nil {
 		return nil, keyErr
 	}
+	logIdempotencyKeyFieldUsage(ctx, logger, refreshReq.IdempotencyKey, headerKey)
 	if clientKey == "" {
 		return handler(ctx, req)
 	}
