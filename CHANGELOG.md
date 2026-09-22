@@ -26,6 +26,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `codes.InvalidArgument` instead of silently preferring one over the other
   (see [ADR-014](doc/adr/ADR-014-idempotency-key-precedence.md))
 
+### Deprecated
+
+- The `idempotency_key` request field on `IssueTokenRequest`/`RefreshTokenRequest` is deprecated
+  in favor of the `x-idempotency-key` metadata header — no behavior change, it keeps working
+  exactly as before; the server now logs when a request's field contributes to key resolution so
+  actual usage is observable ahead of any future removal decision
+  (see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md))
+
 ### Changed
 
 - `IdempotencyStore` gained a `Set` method and a second construction-time TTL for pending

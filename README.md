@@ -130,7 +130,7 @@ Issues a new access + refresh token pair.
 |---|---|---|
 | `sub` | string | Subject identifier (required) |
 | `tenant_id` | string | Must equal the server's `TOKEN_ENGINE_ISSUER` (required) |
-| `idempotency_key` | string | Deduplication key — same key returns same tokens within TTL. Falls back to the `x-idempotency-key` metadata header when unset; setting both to different values returns `INVALID_ARGUMENT` |
+| `idempotency_key` | string | **Deprecated** — use the `x-idempotency-key` metadata header instead. Still honored as a fallback when the header is unset; setting both to different values returns `INVALID_ARGUMENT`. May be removed in a future major version, see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md) |
 | `claims` | map<string,string> | Custom claims stamped on the access token |
 | `audiences` | repeated string | Audience override; defaults to `TOKEN_ENGINE_AUDIENCE` |
 
@@ -144,7 +144,7 @@ Rotates tokens using a valid refresh token. The old refresh token is revoked ato
 |---|---|---|
 | `refresh_token` | string | Current valid refresh token (required) |
 | `tenant_id` | string | Must match the tenant that issued the token (required) |
-| `idempotency_key` | string | Deduplication key. Falls back to the `x-idempotency-key` metadata header when unset; setting both to different values returns `INVALID_ARGUMENT` |
+| `idempotency_key` | string | **Deprecated** — use the `x-idempotency-key` metadata header instead. Still honored as a fallback when the header is unset; setting both to different values returns `INVALID_ARGUMENT`. May be removed in a future major version, see [ADR-015](doc/adr/ADR-015-idempotency-key-field-deprecation.md) |
 | `claims` | map<string,string> | Custom claims on the new access token |
 
 Returns `TokenPair`.

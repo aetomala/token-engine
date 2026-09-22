@@ -16,3 +16,4 @@
 | [ADR-012](ADR-012-idempotency-concurrency-claim.md) | Idempotency Interceptor Concurrent-Request Claim | Accepted | 2026-09-21 |
 | [ADR-013](ADR-013-idempotency-request-fingerprint.md) | Idempotency Key Bound to Request Content via Fingerprint | Accepted | 2026-09-22 |
 | [ADR-014](ADR-014-idempotency-key-precedence.md) | Idempotency Key Precedence Between Request Field and Metadata Header | Accepted | 2026-09-22 |
+| [ADR-015](ADR-015-idempotency-key-field-deprecation.md) | Deprecate the idempotency_key Request Field | Accepted | 2026-09-22 |

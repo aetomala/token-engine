@@ -153,3 +153,24 @@ code also sets the field (or vice versa) with a stale or independently generated
 distinct from the `FailedPrecondition` case in §13: that's a content mismatch against a *previously
 stored* record; this is a conflict *within a single incoming request*, detected before the store is
 ever touched. Neither value is preferred over the other — the fix is for the caller to set only one.
+
+## 15. `idempotency_key` Request Field Is Deprecated
+
+The `idempotency_key` request field is deprecated in favor of the `x-idempotency-key` metadata
+header (see ADR-015). It keeps working exactly as described in §14 above — no behavior change,
+just a signal to migrate. New integrations should use the header exclusively.
+
+The server logs an Info-level line whenever the field contributes to resolving a request's
+effective key, so field usage is directly observable rather than assumed:
+
+- `"deprecated idempotency_key request field used; x-idempotency-key header absent"` — field-only.
+- `"deprecated idempotency_key request field used alongside x-idempotency-key header (values match)"`
+  — both present, matching (both-present-and-differing is rejected with `INVALID_ARGUMENT`
+  before this log call is reached, per §14 — it never logs).
+
+Operators planning a migration can search for either line to find which callers still set the
+field.
+
+There is no removal timeline yet. Removing the field is a breaking, `buf breaking`-flagged change
+that will not happen before the next major version, and only once observed usage supports it —
+see ADR-015's removal criteria.
