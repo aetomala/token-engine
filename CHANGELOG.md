@@ -50,6 +50,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added `scripts/govulncheck-gate.sh`, wired into `make lint`, CI, and `run-ci-locally.sh` in
   place of a bare `govulncheck` invocation — fails on any finding except those explicitly
   allowlisted with a tracking issue and a reason a dependency bump cannot close them yet
+- Pinned the Dockerfile's builder stage to `golang:1.26.5-alpine` — the floating `golang:1.26-alpine`
+  tag had drifted behind `go.mod`'s pinned `go 1.26.5` minimum, breaking `docker compose up` /
+  `podman compose up` for anyone building the image from a clean checkout
 
 ## [v1.1.0] — 2026-08-24
 

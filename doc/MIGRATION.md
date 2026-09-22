@@ -299,8 +299,8 @@ None.
 
 ### What changed
 
-Idempotency hardening across three issues (#127, #128, #129) — no config or environment variable
-changes, no breaking API changes. Automatic behavior changes to be aware of:
+Idempotency hardening across four issues (#127, #128, #129, #139) — no config or environment
+variable changes, no breaking API changes. Automatic behavior changes to be aware of:
 
 - **Concurrent requests sharing an idempotency key are now serialized (#127).** Previously two
   requests with the same key that both arrived before either finished could both reach the
@@ -319,6 +319,13 @@ changes, no breaking API changes. Automatic behavior changes to be aware of:
   to different values returns `codes.InvalidArgument`. See
   [ADR-014](adr/ADR-014-idempotency-key-precedence.md) and
   [operator-guide.md §14](operator-guide.md#14-idempotency-key-precedence-between-field-and-header).
+- **The `idempotency_key` request field is now deprecated, in the same release it became
+  functional (#139).** It keeps working exactly as described above — this is a forward-looking
+  signal, not a behavior change. New integrations should use the `x-idempotency-key` header
+  instead; the server now logs when a request's field contributes to key resolution, so existing
+  usage is observable ahead of any future removal. See
+  [ADR-015](adr/ADR-015-idempotency-key-field-deprecation.md) and
+  [operator-guide.md §15](operator-guide.md#15-idempotency_key-request-field-is-deprecated).
 
 ### Required actions
 
@@ -336,3 +343,6 @@ code changes are required to benefit from them.
   README, now actually gets the protection it always documented. A caller that (perhaps
   unintentionally) sets both the field and the header to different values, previously ignored
   in favor of the header, must now handle `codes.InvalidArgument` and set only one.
+- No caller needs to change anything for the field's new deprecated status — it isn't removed,
+  and there's no removal timeline yet. New integrations should just prefer the header going
+  forward; existing callers on the field are not broken and don't need to migrate immediately.
