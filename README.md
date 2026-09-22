@@ -195,6 +195,37 @@ Revokes all refresh tokens for a user within a specific audience.
 | `NOT_FOUND` | Refresh token not found |
 | `UNAVAILABLE` | Audit store unreachable — revocation RPCs only; issuance is never gated |
 | `INTERNAL` | Invalid key ID; missing kid claim; audit record failure; unexpected library error |
+| `ABORTED` | A concurrent request with the same idempotency key is already in flight; retry |
+| `FAILED_PRECONDITION` | An idempotency key was reused with different request content; use a new key |
+| `INVALID_ARGUMENT` | The `idempotency_key` field and the `x-idempotency-key` header were both set to different values on the same request; set only one |
+
+---
+
+## Idempotency
+
+`IssueToken` and `RefreshToken` support retry-safe requests via the `x-idempotency-key` gRPC
+metadata header. Send the same header value on a retried request with the same content, and you
+get back the exact response from the first call instead of a new token pair:
+
+```go
+import "google.golang.org/grpc/metadata"
+
+ctx := metadata.AppendToOutgoingContext(context.Background(), "x-idempotency-key", "req-abc-123")
+pair, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+    Sub:      "user-123",
+    TenantId: "my-service",
+})
+```
+
+- **Same key, same content, retried** → the cached response, not a second token pair.
+- **Same key, different content** (e.g. a different `sub`) → `codes.FailedPrecondition` — the key
+  is bound to the content that first used it; use a new key for a genuinely different request.
+- **A concurrent duplicate** (two requests with the same key in flight at once) → `codes.Aborted`
+  on the loser; retry.
+
+See [`examples/idempotency`](examples/idempotency) for a runnable walkthrough of all three cases,
+and [`doc/operator-guide.md`](doc/operator-guide.md) §13–15 for the full behavioral contract,
+including the deprecated `idempotency_key` request field's fallback behavior.
 
 ---
 

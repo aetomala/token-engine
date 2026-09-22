@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
 	"github.com/aetomala/token-engine/internal/audit"
@@ -535,6 +536,146 @@ var _ = Describe("TokenEngine", func() {
 					IdempotencyKey: "idem-field-key-different",
 				})
 				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			})
+		})
+
+		Context("when the same key is replayed with different content — IssueToken (issue #128 / ADR-013)", func() {
+			It("returns codes.FailedPrecondition on the second call, not the mismatched response", func() {
+				idempKey := "idem-fingerprint-issue-key"
+
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				_, err := client.IssueToken(ctx1, &tokenv1.IssueTokenRequest{
+					Sub:      "user-fingerprint-a",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+				ctx2 = metadata.AppendToOutgoingContext(ctx2,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				_, err = client.IssueToken(ctx2, &tokenv1.IssueTokenRequest{
+					Sub:      "user-fingerprint-b",
+					TenantId: "test-issuer",
+				})
+				Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
+			})
+		})
+
+		Context("when the same key is replayed with different content — RefreshToken (issue #128 / ADR-013)", func() {
+			It("returns codes.FailedPrecondition on the second call, not the mismatched response", func() {
+				idempKey := "idem-fingerprint-refresh-key"
+
+				setupCtx, setupCancel := authCtx()
+				defer setupCancel()
+				tokenA, err := client.IssueToken(setupCtx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-fingerprint-refresh-a",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				setupCtx2, setupCancel2 := authCtx()
+				defer setupCancel2()
+				tokenB, err := client.IssueToken(setupCtx2, &tokenv1.IssueTokenRequest{
+					Sub:      "user-fingerprint-refresh-b",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				_, err = client.RefreshToken(ctx1, &tokenv1.RefreshTokenRequest{
+					RefreshToken: tokenA.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+				ctx2 = metadata.AppendToOutgoingContext(ctx2,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				_, err = client.RefreshToken(ctx2, &tokenv1.RefreshTokenRequest{
+					RefreshToken: tokenB.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
+			})
+		})
+
+		Context("when a legacy pre-#127 record (raw bytes, no envelope) is seeded directly into Redis", func() {
+			It("is read as a cache hit through the real store and codec path, not just a mock", func() {
+				idempKey := "idem-legacy-record-key"
+				redisKey := "idempotency:test-issuer:IssueToken:" + idempKey
+
+				legacyResp := &tokenv1.TokenPair{AccessToken: "legacy-pre-envelope-token"}
+				legacyBytes, err := proto.Marshal(legacyResp)
+				Expect(err).NotTo(HaveOccurred())
+				mr.Set(redisKey, string(legacyBytes))
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				ctx = metadata.AppendToOutgoingContext(ctx,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				resp, err := client.IssueToken(ctx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-legacy-replay",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.AccessToken).To(Equal("legacy-pre-envelope-token"))
+			})
+		})
+
+		Context("when the same literal key is used for IssueToken and RefreshToken (method-scoped namespacing)", func() {
+			It("does not collide — both calls succeed independently", func() {
+				sharedKey := "idem-cross-rpc-shared-key"
+
+				setupCtx, setupCancel := authCtx()
+				defer setupCancel()
+				seedToken, err := client.IssueToken(setupCtx, &tokenv1.IssueTokenRequest{
+					Sub:      "user-cross-rpc-seed",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, sharedKey,
+				)
+				issued, err := client.IssueToken(ctx1, &tokenv1.IssueTokenRequest{
+					Sub:      "user-cross-rpc",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+				ctx2 = metadata.AppendToOutgoingContext(ctx2,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, sharedKey,
+				)
+				refreshed, err := client.RefreshToken(ctx2, &tokenv1.RefreshTokenRequest{
+					RefreshToken: seedToken.RefreshToken,
+					TenantId:     "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(refreshed.AccessToken).NotTo(Equal(issued.AccessToken))
 			})
 		})
 	})

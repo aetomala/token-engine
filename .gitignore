@@ -5,6 +5,7 @@ examples/grpc-client/grpc-client
 examples/mtls-client/mtls-client
 examples/custom-claims/custom-claims
 examples/multi-tenant/multi-tenant
+examples/idempotency/idempotency
 
 # Test coverage
 cover*.out
