@@ -344,7 +344,7 @@ See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines,
 | v0.9 | ✅ Complete | `docker-compose.yaml` single-command local stack, `examples/custom-claims` + `examples/multi-tenant`, all four examples as independent Go modules with per-example READMEs |
 | v1.0 | ✅ Complete | Production readiness — true refresh token rotation, populated `access_token_expires_in` / `refresh_token_expires_in`, `NewReconcilerChecker` for `/healthz/ready`, `PERFORMANCE.md` RPC latency baseline, pre-1.0 correctness audit |
 | v1.1 | ✅ Complete | jwtauth v1.1.0 upgrade (expiry-indexed `Cleanup`, `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` one-time migration), `config.Load()` returns sentinel errors instead of exiting, tenant_id/audit-event/static-caller-key correctness fixes, reconciler simplified to one cleanup call per tenant per pass, `UPGRADING.md` consolidated into `doc/MIGRATION.md`, CI reliability fixes |
-| v1.2 | 🚧 In Progress | Idempotency hardening — concurrent same-key request serialization via an atomic claim (#127), request-content fingerprint binding (#128), documented `idempotency_key` field wiring (#129) |
+| v1.2 | ✅ Complete | Idempotency hardening — concurrent same-key request serialization via an atomic claim (#127), request-content fingerprint binding (#128), documented `idempotency_key` field wiring (#129), field deprecated in favor of the header (#139), `examples/idempotency` |
 
 ---
 
