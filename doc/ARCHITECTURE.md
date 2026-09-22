@@ -54,7 +54,7 @@ Client Request
 ├─────────────────────────┤
 │ 4. Caller Authorization │  checks caller identity against allowed callers per tenant
 ├─────────────────────────┤
-│ 5. Idempotency          │  deduplicates requests by idempotency key within TTL
+│ 5. Idempotency          │  atomic claim + content-fingerprint check (hit / mismatch / conflict)
 ├─────────────────────────┤
 │ 6. Validation           │  validates required request fields
 └─────────────────────────┘
@@ -85,8 +85,20 @@ Auth interceptor        — reads TLS peer CN [mtls] or x-api-key header [disabl
 CallerAuthz interceptor — checks caller identity against tenant's allowed callers list
   │  ← PERMISSION_DENIED if caller not authorized
   ▼
-Idempotency interceptor — checks in-memory store for duplicate idempotency key
-  │  ← returns cached response if duplicate within TTL
+Idempotency interceptor — resolves the effective key from the `x-idempotency-key` metadata header
+                           and/or the deprecated `idempotency_key` request field; header and field
+                           set to different values → INVALID_ARGUMENT before any store interaction
+                           [ADR-014, ADR-015]
+  │
+  ▼
+  Atomically claims the key in the Redis-backed store via SetNX before the handler runs [ADR-012]
+  │  ← ABORTED if the key is already claimed and still pending (no blocking/retry loop)
+  │  ← on a completed record: cached response returned if the request's content fingerprint
+  │    matches the one stored with that key; FAILED_PRECONDITION if it does not [ADR-013]
+  │
+  Note: for RefreshToken, the claim must precede the jwtauth call, since
+  RefreshAccessTokenWithClaims revokes the old refresh token immediately — a retry arriving
+  after the first call would otherwise hit ErrTokenRevoked.
   ▼
 Validation interceptor  — validates required fields
   │
@@ -119,19 +131,19 @@ Every component receives three observability fields injected at construction tim
 
 ## jwtauth Integration
 
-token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v1.0.0.
+token-engine delegates all token business logic to `github.com/aetomala/jwtauth` v1.1.0.
 
 The `TokenHandler` depends on the `tokens.TokenManager` interface (introduced in jwtauth v0.7.1), not the concrete `*tokens.Manager` type. This enables service-layer unit testing without a running key store or storage backend — `StaticTenantRegistry.Get` returns the interface, and tests inject `mock_tokens_manager.go` generated against it.
 
 | Component | Interface / Type | Purpose |
 |---|---|---|
-| `tokens.TokenManager` | Interface (v1.0.0) | Token issuance, refresh, revocation, validation |
+| `tokens.TokenManager` | Interface (v1.1.0) | Token issuance, refresh, revocation, validation |
 | `keys.KeyManager` | `*keys.Manager` | Key lifecycle — rotation, loading, JWKS |
 | `storage.RefreshStore` | Interface | Persistent refresh token storage |
 
 token-engine does not implement any JWT signing, key management, or token storage logic. It provides the transport, multi-tenancy, and observability layers that jwtauth does not include by design.
 
-**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v1.0.0 source:
+**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v1.1.0 source:
 
 | Sentinel | Package | gRPC Code |
 |---|---|---|
@@ -201,18 +213,9 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 
 ## Roadmap
 
-| Version | Target | Key Work |
-|---|---|---|
-| v0.1 | ✅ Complete | Service skeleton, static auth, in-memory idempotency, NoOp stubs for all deferred concerns |
-| v0.2 | ✅ Complete | Single hardcoded tenant, Redis key + refresh stores, `tokens.Manager` wired, `IssueToken` + `RefreshToken` live |
-| v0.3 | ✅ Complete | `RevokeToken`, `RevokeAllForAudience`, `RevokeAllUserTokens` handlers, JWKS endpoint, `SlogAuditStore`, jwtauth v0.7.1 (`tokens.TokenManager` interface) |
-| v0.4 | ✅ Complete | `RedisIdempotencyStore` + full idempotency interceptor (promoted from NoOp), 24h TTL default, shutdown hardening (OTel flush, gRPC 10s drain, HTTP timeouts), end-to-end integration test suite |
-| v0.5 | ✅ Complete | `RevokeAllForUserAndAudience` RPC + handler; `MTLSAuthenticator`; static YAML caller registry (`CallerRegistryConfig`, `LoadCallerRegistryConfig`); `MultiTenantRegistry` with `Add`/`Drain`/`Remove` + per-tenant namespace isolation; mTLS gRPC server credentials (TLS 1.3 min); `deploy/caller-registry.yaml`; integration suite at 12 specs |
-| v0.6 | ✅ Complete | Distributed lock package (`RedisLock`); `CursorReconciler` replacing `NoOpReconciler` (ADR-011); `RefreshToken` idempotency promoted; JWKS key count metric; Kubernetes deployment manifest + startup probe; operator + pre-upgrade runbooks; `govulncheck` + `revive`/`godot` enforced in CI; Go 1.26.4 security bump (GO-2026-5039, GO-2026-5037) |
-| v0.7 | ✅ Complete | jwtauth v0.7.2 → v1.0.0; `NoOpLocker` + `NoOpLock`; ADR-002–006 corrected; operator guide RPC list fixed |
-| v0.8 | ✅ Complete | `client/` Go SDK; `examples/grpc-client` + `examples/mtls-client`; ADR-007–010; `doc/MIGRATION.md`; `doc/` consolidation; METRICS.md promoted `token_engine_jwks_key_count` |
-| v0.9 | ✅ Complete | `docker-compose.yaml` for local development; `examples/custom-claims` + `examples/multi-tenant`; all four examples restructured as independent Go modules with per-example READMEs |
-| v1.0 | ✅ Complete | Pre-1.0 correctness audit: true refresh token rotation; populated `access_token_expires_in` / `refresh_token_expires_in`; `NewReconcilerChecker` health check; `PERFORMANCE.md` RPC latency baseline; empty caller registry permitting in `TLS_MODE=disabled` |
+Release-by-release scope and status live in a single place to avoid two tables drifting apart —
+see [Roadmap](../README.md#roadmap) in the README for the full version history from v0.1 through
+the current release.
 
 ---
 
@@ -229,4 +232,9 @@ Mocks are generated with `go.uber.org/mock/mockgen` in source mode. All mocks li
 | [ADR-007](adr/ADR-007-multi-tenant-registry.md) | MultiTenantRegistry Add/Drain/Remove lifecycle and per-tenant namespace isolation |
 | [ADR-008](adr/ADR-008-mtls-auth-model.md) | mTLS authentication model — CN-based caller identity, RequireAndVerifyClientCert, TLS 1.3 minimum |
 | [ADR-009](adr/ADR-009-distributed-lock.md) | Distributed lock design — SET NX PX acquisition, Lua CAS-delete release, per-call TTL, acceptable failure modes for best-effort operations |
-| [ADR-011](adr/ADR-011-cursor-based-reconciler.md) | Cursor-Based Reconciler | Complete — v0.6 |
+| [ADR-010](adr/ADR-010-jwks-observability-namespace.md) | JWKS per-tenant observability namespace strategy |
+| [ADR-011](adr/ADR-011-cursor-based-reconciler.md) | Cursor-based reconciler |
+| [ADR-012](adr/ADR-012-idempotency-concurrency-claim.md) | Idempotency interceptor concurrent-request claim — atomic SetNX-based claim before the handler runs |
+| [ADR-013](adr/ADR-013-idempotency-request-fingerprint.md) | Idempotency key bound to request content via SHA-256 fingerprint — FAILED_PRECONDITION on mismatch |
+| [ADR-014](adr/ADR-014-idempotency-key-precedence.md) | Idempotency key precedence between the request field and the metadata header — INVALID_ARGUMENT on conflict |
+| [ADR-015](adr/ADR-015-idempotency-key-field-deprecation.md) | Deprecate the `idempotency_key` request field in favor of the metadata header |
