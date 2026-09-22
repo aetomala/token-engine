@@ -225,6 +225,26 @@ var _ = Describe("IdempotencyInterceptor", func() {
 		ctrl.Finish()
 	})
 
+	Describe("resolveIdempotencyKey precedence (issue #129 / ADR-014)", func() {
+		DescribeTable("resolving the effective client key",
+			func(headerKey, fieldKey, expectedKey string, expectError bool) {
+				key, err := interceptor.ResolveIdempotencyKeyForTest(headerKey, fieldKey)
+				if expectError {
+					Expect(err).To(HaveOccurred())
+					Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				} else {
+					Expect(err).NotTo(HaveOccurred())
+				}
+				Expect(key).To(Equal(expectedKey))
+			},
+			Entry("neither set", "", "", "", false),
+			Entry("header only", "header-key", "", "header-key", false),
+			Entry("field only", "", "field-key", "field-key", false),
+			Entry("both set and equal", "same-key", "same-key", "same-key", false),
+			Entry("both set and differ", "header-key", "field-key", "", true),
+		)
+	})
+
 	// ===== PHASE 3: Core Operations =====
 	Describe("Phase 3: Core Operations", func() {
 
@@ -354,6 +374,62 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				resp, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp).To(Equal(expectedResp))
+			})
+		})
+
+		Context("when idempotency_key is present on the request field only, no header (issue #129)", func() {
+			It("claims and promotes the key exactly as the header-only path does", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-key-1"}
+				expectedKey := "idempotency:tenant1:IssueToken:field-key-1"
+
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("when the header and the idempotency_key field are both present and equal (issue #129)", func() {
+			It("claims and promotes the key normally", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", IdempotencyKey: "same-key"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "same-key"))
+				expectedKey := "idempotency:tenant1:IssueToken:same-key"
+
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("when the header and the idempotency_key field are both present and differ (issue #129 / ADR-014)", func() {
+			It("returns codes.InvalidArgument without touching the store or calling the handler", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-key"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "header-key"))
+
+				mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
+				mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any()).Times(0)
+
+				handlerCalled := false
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					handlerCalled = true
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(handlerCalled).To(BeFalse())
 			})
 		})
 
@@ -755,6 +831,62 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(claimCallOrder).To(Equal(0))
 					Expect(handlerOrder).To(Equal(1))
+				})
+			})
+
+			Context("when idempotency_key is present on the request field only, no header (issue #129)", func() {
+				It("claims and promotes the key exactly as the header-only path does", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-refresh-key"}
+					expectedKey := "idempotency:tenant1:RefreshToken:field-refresh-key"
+
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctx, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+					Expect(err).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("when the header and the idempotency_key field are both present and equal (issue #129)", func() {
+				It("claims and promotes the key normally", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", IdempotencyKey: "same-refresh-key"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "same-refresh-key"))
+					expectedKey := "idempotency:tenant1:RefreshToken:same-refresh-key"
+
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
+					mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).Return(nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, gomock.Any())
+
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+					Expect(err).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("when the header and the idempotency_key field are both present and differ (issue #129 / ADR-014)", func() {
+				It("returns codes.InvalidArgument without touching the store or calling the handler", func() {
+					req := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", IdempotencyKey: "field-refresh-key"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "header-refresh-key"))
+
+					mockStore.EXPECT().SetNX(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockStore.EXPECT().Get(gomock.Any(), gomock.Any()).Times(0)
+					mockStore.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					mockMetrics.EXPECT().IncrementCounter(gomock.Any(), gomock.Any()).Times(0)
+
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+					Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+					Expect(handlerCalled).To(BeFalse())
 				})
 			})
 

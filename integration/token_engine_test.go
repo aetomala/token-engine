@@ -492,5 +492,50 @@ var _ = Describe("TokenEngine", func() {
 				Expect(second.AccessToken).NotTo(Equal(first.AccessToken))
 			})
 		})
+
+		Context("when the same idempotency_key request field is sent twice, no header (issue #129)", func() {
+			It("returns the cached response on the second call — access_token is identical", func() {
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1, "x-api-key", "test-api-key")
+
+				first, err := client.IssueToken(ctx1, &tokenv1.IssueTokenRequest{
+					Sub:            "user-idem-field",
+					TenantId:       "test-issuer",
+					IdempotencyKey: "idem-field-key-abc",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+				ctx2 = metadata.AppendToOutgoingContext(ctx2, "x-api-key", "test-api-key")
+
+				second, err := client.IssueToken(ctx2, &tokenv1.IssueTokenRequest{
+					Sub:            "user-idem-field",
+					TenantId:       "test-issuer",
+					IdempotencyKey: "idem-field-key-abc",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(second.AccessToken).To(Equal(first.AccessToken))
+			})
+		})
+
+		Context("when the header and the idempotency_key field are both present and differ (issue #129 / ADR-014)", func() {
+			It("returns codes.InvalidArgument", func() {
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, "idem-header-key",
+				)
+
+				_, err := client.IssueToken(ctx1, &tokenv1.IssueTokenRequest{
+					Sub:            "user-idem-conflict",
+					TenantId:       "test-issuer",
+					IdempotencyKey: "idem-field-key-different",
+				})
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			})
+		})
 	})
 })

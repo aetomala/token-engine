@@ -35,6 +35,7 @@ const (
 
 	idempotencyAbortedMsg             = "a request with this idempotency key is already in progress; retry"
 	idempotencyFingerprintMismatchMsg = "this idempotency key was previously used with different request content; use a new key"
+	idempotencyKeyConflictMsg         = "idempotency_key request field and x-idempotency-key metadata header are both set but differ; set only one"
 )
 
 // idempotencyRecordMagic prefixes every record written in the versioned envelope format. Bytes
@@ -136,6 +137,24 @@ func computeRefreshFingerprint(req *tokenv1.RefreshTokenRequest) string {
 	})
 }
 
+// resolveIdempotencyKey resolves the effective idempotency key from the x-idempotency-key
+// metadata header and the idempotency_key request field, per ADR-014. Comparison is exact-string
+// equality — no trimming or case-folding. Returns ("", nil) when neither is set — the caller
+// passes through without store interaction. Returns the single supplied value when only one is
+// set, or either value when both are set and equal. Returns ("", err) with a codes.InvalidArgument
+// error when both are set and differ — the caller must reject the request before any store
+// interaction, without attempting a claim or calling the handler.
+func resolveIdempotencyKey(headerKey, fieldKey string) (string, error) {
+	switch {
+	case headerKey == "":
+		return fieldKey, nil
+	case fieldKey == "", headerKey == fieldKey:
+		return headerKey, nil
+	default:
+		return "", status.Error(codes.InvalidArgument, idempotencyKeyConflictMsg)
+	}
+}
+
 // decodeIdempotencyRecord unmarshals raw into an idempotencyRecord. Returns ok=false when raw
 // lacks the magic prefix or fails to unmarshal — the caller falls back to treating raw as a
 // legacy bare-TokenPair record.
@@ -207,6 +226,11 @@ func ResolveExistingRecordForTest(raw []byte) (*tokenv1.TokenPair, string, bool,
 	return resolveExistingRecord(raw)
 }
 
+// ResolveIdempotencyKeyForTest exposes resolveIdempotencyKey, for testing purposes only.
+func ResolveIdempotencyKeyForTest(headerKey, fieldKey string) (string, error) {
+	return resolveIdempotencyKey(headerKey, fieldKey)
+}
+
 // NewIdempotencyInterceptor returns a gRPC unary server interceptor providing at-most-once
 // semantics for IssueToken and RefreshToken RPCs, including for requests that arrive
 // concurrently with the same idempotency key.
@@ -231,7 +255,13 @@ func ResolveExistingRecordForTest(raw []byte) (*tokenv1.TokenPair, string, bool,
 // where method is "IssueToken" or "RefreshToken".
 //
 // Response type for both methods: *tokenv1.TokenPair.
-// X-idempotency-key absent or empty: pass through without store interaction.
+//
+// Client key source: the x-idempotency-key metadata header, or the idempotency_key request
+// field as a fallback when the header is absent. When both are set and differ, the request is
+// rejected with codes.InvalidArgument before any store interaction — neither value is preferred
+// over the other, since the conflict itself indicates a caller-side integration bug. When both
+// are set and equal, or only one is set, that value is used. See ADR-014 for the full precedence
+// rule and rationale. Neither header nor field set: pass through without store interaction.
 func NewIdempotencyInterceptor(st store.IdempotencyStore, logger observability.Logger, metrics observability.Metrics) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// ===== STEP 1: Method guard =====
@@ -247,18 +277,7 @@ func NewIdempotencyInterceptor(st store.IdempotencyStore, logger observability.L
 }
 
 func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler, st store.IdempotencyStore, logger observability.Logger, metrics observability.Metrics) (interface{}, error) {
-	// ===== STEP 2: Extract x-idempotency-key =====
-	var clientKey string
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if vals := md.Get(observability.MetadataKeyIdempotencyKey); len(vals) > 0 {
-			clientKey = vals[0]
-		}
-	}
-	if clientKey == "" {
-		return handler(ctx, req)
-	}
-
-	// ===== STEP 3: Extract tenantID via type assertion =====
+	// ===== STEP 2: Extract tenantID via type assertion =====
 	issueReq, ok := req.(*tokenv1.IssueTokenRequest)
 	if !ok {
 		logger.Error(ctx, "idempotency interceptor: req type assertion to *IssueTokenRequest failed")
@@ -267,6 +286,21 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 	tenantID := issueReq.TenantId
 	if tenantID == "" {
 		tenantID = idempotencyDefaultTenantID
+	}
+
+	// ===== STEP 3: Resolve the effective client key (header, field, or both — see ADR-014) =====
+	var headerKey string
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if vals := md.Get(observability.MetadataKeyIdempotencyKey); len(vals) > 0 {
+			headerKey = vals[0]
+		}
+	}
+	clientKey, keyErr := resolveIdempotencyKey(headerKey, issueReq.IdempotencyKey)
+	if keyErr != nil {
+		return nil, keyErr
+	}
+	if clientKey == "" {
+		return handler(ctx, req)
 	}
 
 	// ===== STEP 4: Construct Redis key =====
@@ -341,18 +375,7 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 }
 
 func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler, st store.IdempotencyStore, logger observability.Logger, metrics observability.Metrics) (interface{}, error) {
-	// ===== STEP 2: Extract x-idempotency-key =====
-	var clientKey string
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if vals := md.Get(observability.MetadataKeyIdempotencyKey); len(vals) > 0 {
-			clientKey = vals[0]
-		}
-	}
-	if clientKey == "" {
-		return handler(ctx, req)
-	}
-
-	// ===== STEP 3: Extract tenantID via type assertion =====
+	// ===== STEP 2: Extract tenantID via type assertion =====
 	refreshReq, ok := req.(*tokenv1.RefreshTokenRequest)
 	if !ok {
 		logger.Error(ctx, "idempotency interceptor: req type assertion to *RefreshTokenRequest failed")
@@ -361,6 +384,21 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 	tenantID := refreshReq.TenantId
 	if tenantID == "" {
 		tenantID = idempotencyDefaultTenantID
+	}
+
+	// ===== STEP 3: Resolve the effective client key (header, field, or both — see ADR-014) =====
+	var headerKey string
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if vals := md.Get(observability.MetadataKeyIdempotencyKey); len(vals) > 0 {
+			headerKey = vals[0]
+		}
+	}
+	clientKey, keyErr := resolveIdempotencyKey(headerKey, refreshReq.IdempotencyKey)
+	if keyErr != nil {
+		return nil, keyErr
+	}
+	if clientKey == "" {
+		return handler(ctx, req)
 	}
 
 	// ===== STEP 4: Construct Redis key =====
