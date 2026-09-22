@@ -110,3 +110,24 @@ expiry index backfill complete tenant_id=<tenant> removed=<n> indexed=<n>
 A per-tenant failure logs a warning and does not block startup or the remaining tenants — retry by restarting with the flag still set. **Unset `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` after a successful run.** The migration is idempotent — `BackfillExpiryIndex` is safe to run more than once, including concurrently with live traffic — but leaving the flag set means every subsequent restart re-runs the same full-keyspace scan the v1.1.0 upgrade exists to eliminate.
 
 This step is not required for tenants added after upgrading to jwtauth v1.1.0 — their tokens are indexed at `Store` time from the start.
+
+## 13. Idempotency Key Content Binding
+
+A completed idempotency record now also stores a fingerprint of the request content that produced
+it — a SHA-256 hash of the fields that determine the result (see ADR-013). For `IssueToken` that's
+subject, tenant, claims, and audiences; for `RefreshToken` it's the refresh token, tenant, and
+claims. The raw refresh token is only ever hashed, never itself written to the store.
+
+A repeated `X-Idempotency-Key` whose request content differs from the request that originally
+produced the cached response — a different `sub` for `IssueToken`, a different refresh token for
+`RefreshToken` — now returns `codes.FailedPrecondition` instead of the original response. This is
+distinct from `codes.Aborted` (returned for a genuine concurrent duplicate still in flight):
+`Aborted` means retry the same call; `FailedPrecondition` means the key itself must change before
+retrying — the caller should supply a new idempotency key.
+
+Operator guidance: treat a `FailedPrecondition` on `IssueToken` or `RefreshToken` as a caller-side
+key-management bug (idempotency keys reused across logically different requests), not a transient
+condition — retrying with the same key and content will fail again. Records written before this
+change (no stored fingerprint) are not subject to this check for the remainder of their original
+TTL — they continue returning a cache hit regardless of the replaying request's content, exactly as
+before this change.

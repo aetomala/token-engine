@@ -15,6 +15,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   key to both reach the handler — the key is now claimed atomically before the handler runs;
   a concurrent duplicate receives `codes.Aborted` instead of racing the first request or
   receiving a duplicate result (see [ADR-012](doc/adr/ADR-012-idempotency-concurrency-claim.md))
+- Fixed the idempotency interceptor returning a cached response without checking whether a
+  replayed idempotency key matches the original request's content — a completed record now
+  carries a content fingerprint, and a key reused with different content (different subject for
+  `IssueToken`, different refresh token for `RefreshToken`) returns `codes.FailedPrecondition`
+  instead of the mismatched response (see [ADR-013](doc/adr/ADR-013-idempotency-request-fingerprint.md))
 
 ### Changed
 

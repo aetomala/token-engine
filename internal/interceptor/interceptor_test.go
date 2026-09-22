@@ -313,7 +313,7 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(true, nil)
 				mockStore.EXPECT().Set(gomock.Any(), expectedKey, gomock.Any()).DoAndReturn(
 					func(_ context.Context, _ string, value []byte) error {
-						resp, isCompleted, err := interceptor.ResolveExistingRecordForTest(value)
+						resp, _, isCompleted, err := interceptor.ResolveExistingRecordForTest(value)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(isCompleted).To(BeTrue())
 						respBytes, _ := proto.Marshal(resp)
@@ -459,14 +459,15 @@ var _ = Describe("IdempotencyInterceptor", func() {
 		})
 
 		Context("when x-idempotency-key is present — claim fails, existing record is completed (versioned envelope)", func() {
-			It("returns the unmarshaled cached response without calling the handler", func() {
-				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1"}
+			It("returns the unmarshaled cached response without calling the handler when the fingerprint matches", func() {
+				req := &tokenv1.IssueTokenRequest{TenantId: "tenant1", Sub: "user-a"}
 				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
 				expectedKey := "idempotency:tenant1:IssueToken:client-key-1"
 				cachedResp := &tokenv1.TokenPair{AccessToken: "cached-token"}
 				respBytes, err := proto.Marshal(cachedResp)
 				Expect(err).NotTo(HaveOccurred())
-				envelopeBytes := interceptor.EncodeCompletedRecordForTest(respBytes)
+				fingerprint := interceptor.ComputeIssueFingerprintForTest(req)
+				envelopeBytes := interceptor.EncodeCompletedRecordForTest(respBytes, fingerprint)
 
 				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
 				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(envelopeBytes, true, nil)
@@ -483,6 +484,35 @@ var _ = Describe("IdempotencyInterceptor", func() {
 				respTokenPair, ok := resp.(*tokenv1.TokenPair)
 				Expect(ok).To(BeTrue())
 				Expect(respTokenPair.AccessToken).To(Equal(cachedResp.AccessToken))
+			})
+		})
+
+		Context("when x-idempotency-key is present — claim fails, existing record's fingerprint does not match (issue #128)", func() {
+			It("returns codes.FailedPrecondition without calling the handler, for a different subject", func() {
+				originalReq := &tokenv1.IssueTokenRequest{TenantId: "tenant1", Sub: "user-a"}
+				replayReq := &tokenv1.IssueTokenRequest{TenantId: "tenant1", Sub: "user-b"}
+				ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "client-key-1"))
+				expectedKey := "idempotency:tenant1:IssueToken:client-key-1"
+				cachedResp := &tokenv1.TokenPair{AccessToken: "user-a-token"}
+				respBytes, err := proto.Marshal(cachedResp)
+				Expect(err).NotTo(HaveOccurred())
+				envelopeBytes := interceptor.EncodeCompletedRecordForTest(respBytes, interceptor.ComputeIssueFingerprintForTest(originalReq))
+
+				mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
+				mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(envelopeBytes, true, nil)
+				mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
+					"result":     "mismatch",
+					"rpc_method": "/token.v1.TokenEngine/IssueToken",
+				})
+
+				handlerCalled := false
+				handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+					handlerCalled = true
+					return &tokenv1.TokenPair{}, nil
+				}
+				_, err = sut(ctxWithMD, replayReq, &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/IssueToken"}, handler)
+				Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
+				Expect(handlerCalled).To(BeFalse())
 			})
 		})
 
@@ -749,6 +779,36 @@ var _ = Describe("IdempotencyInterceptor", func() {
 					_, err := sut(ctxWithMD, req, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
 
 					Expect(err).NotTo(HaveOccurred())
+					Expect(handlerCalled).To(BeFalse())
+				})
+			})
+
+			Context("when x-idempotency-key is present — claim fails, existing record's fingerprint does not match (issue #128)", func() {
+				It("returns codes.FailedPrecondition without calling the handler, for a different refresh token", func() {
+					originalReq := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", RefreshToken: "original-rt"}
+					replayReq := &tokenv1.RefreshTokenRequest{TenantId: "tenant1", RefreshToken: "different-rt"}
+					ctxWithMD := metadata.NewIncomingContext(ctx, metadata.Pairs(observability.MetadataKeyIdempotencyKey, "refresh-key-1"))
+					expectedKey := "idempotency:tenant1:RefreshToken:refresh-key-1"
+					cachedResp := &tokenv1.TokenPair{AccessToken: "original-token"}
+					respBytes, err := proto.Marshal(cachedResp)
+					Expect(err).NotTo(HaveOccurred())
+					envelopeBytes := interceptor.EncodeCompletedRecordForTest(respBytes, interceptor.ComputeRefreshFingerprintForTest(originalReq))
+
+					mockStore.EXPECT().SetNX(gomock.Any(), expectedKey, gomock.Any()).Return(false, nil)
+					mockStore.EXPECT().Get(gomock.Any(), expectedKey).Return(envelopeBytes, true, nil)
+					mockMetrics.EXPECT().IncrementCounter(observability.MetricIdempotencyTotal, map[string]string{
+						"result":     "mismatch",
+						"rpc_method": refreshMethod,
+					})
+
+					handlerCalled := false
+					handler := func(ctxIn context.Context, r interface{}) (interface{}, error) {
+						handlerCalled = true
+						return &tokenv1.TokenPair{}, nil
+					}
+					_, err = sut(ctxWithMD, replayReq, &grpc.UnaryServerInfo{FullMethod: refreshMethod}, handler)
+
+					Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 					Expect(handlerCalled).To(BeFalse())
 				})
 			})
