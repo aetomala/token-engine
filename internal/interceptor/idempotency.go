@@ -2,7 +2,10 @@ package interceptor
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"sort"
 
 	tokenv1 "github.com/aetomala/token-engine/gen/v1"
 	"github.com/aetomala/token-engine/internal/observability"
@@ -24,12 +27,14 @@ const (
 	idempotencyMethodIssue     = "IssueToken"
 	idempotencyMethodRefresh   = "RefreshToken"
 
-	idempotencyResultHit   = "hit"
-	idempotencyResultMiss  = "miss"
-	idempotencyLabelResult = "result"
-	idempotencyLabelMethod = "rpc_method"
+	idempotencyResultHit      = "hit"
+	idempotencyResultMiss     = "miss"
+	idempotencyResultMismatch = "mismatch"
+	idempotencyLabelResult    = "result"
+	idempotencyLabelMethod    = "rpc_method"
 
-	idempotencyAbortedMsg = "a request with this idempotency key is already in progress; retry"
+	idempotencyAbortedMsg             = "a request with this idempotency key is already in progress; retry"
+	idempotencyFingerprintMismatchMsg = "this idempotency key was previously used with different request content; use a new key"
 )
 
 // idempotencyRecordMagic prefixes every record written in the versioned envelope format. Bytes
@@ -45,27 +50,90 @@ const (
 	idempotencyStateCompleted idempotencyRecordState = "completed"
 )
 
-// idempotencyRecord is the versioned envelope stored at an idempotency key. Response is
-// present only when State is idempotencyStateCompleted — it holds a marshaled *tokenv1.TokenPair.
-// Future issues extend this envelope (a request-content fingerprint, a token reference) rather
-// than introducing a separate record format — see ADR-012.
+// idempotencyRecord is the versioned envelope stored at an idempotency key. Response and
+// Fingerprint are present only when State is idempotencyStateCompleted — Response holds a
+// marshaled *tokenv1.TokenPair, Fingerprint holds the hex-encoded SHA-256 hash of the request
+// content that produced it (see computeFingerprint). Fingerprint is empty for records written
+// before it existed (#127-era and legacy bare-TokenPair records) — resolveExistingRecord skips
+// the mismatch check for those, see ADR-013. Future issues extend this envelope (e.g. #117's
+// token reference) rather than introducing a separate record format — see ADR-012.
 type idempotencyRecord struct {
-	State    idempotencyRecordState `json:"state"`
-	Response []byte                 `json:"response,omitempty"`
+	State       idempotencyRecordState `json:"state"`
+	Response    []byte                 `json:"response,omitempty"`
+	Fingerprint string                 `json:"fingerprint,omitempty"`
 }
 
 // idempotencyPendingRecord is the fixed byte value SetNX writes to claim a key before its
 // handler runs.
 var idempotencyPendingRecord = append(append([]byte{}, idempotencyRecordMagic...), []byte(`{"state":"pending"}`)...)
 
-// encodeCompletedRecord marshals a completed idempotencyRecord wrapping response into the
-// magic-prefixed versioned envelope format. Returns an error if JSON marshaling fails.
-func encodeCompletedRecord(response []byte) ([]byte, error) {
-	body, err := json.Marshal(idempotencyRecord{State: idempotencyStateCompleted, Response: response})
+// encodeCompletedRecord marshals a completed idempotencyRecord wrapping response and its
+// request-content fingerprint into the magic-prefixed versioned envelope format. Returns an
+// error if JSON marshaling fails.
+func encodeCompletedRecord(response []byte, fingerprint string) ([]byte, error) {
+	body, err := json.Marshal(idempotencyRecord{State: idempotencyStateCompleted, Response: response, Fingerprint: fingerprint})
 	if err != nil {
 		return nil, err
 	}
 	return append(append([]byte{}, idempotencyRecordMagic...), body...), nil
+}
+
+// computeFingerprint returns the hex-encoded SHA-256 hash of v's canonical JSON encoding, for
+// use as an idempotencyRecord's Fingerprint. Callers pass a struct built from exactly the request
+// fields that determine the result — map fields marshal with keys sorted alphabetically by
+// encoding/json, giving a deterministic digest regardless of map iteration order. Returns "" if
+// marshaling fails; callers treat that as "fingerprint unavailable" and skip the mismatch check
+// for the record being written, degrading open rather than rejecting the request.
+func computeFingerprint(v interface{}) string {
+	body, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// issueFingerprintInput is the canonical, hashable projection of an IssueTokenRequest's
+// result-determining fields — everything except IdempotencyKey.
+type issueFingerprintInput struct {
+	Sub       string            `json:"sub"`
+	TenantID  string            `json:"tenant_id"`
+	Claims    map[string]string `json:"claims"`
+	Audiences []string          `json:"audiences"`
+}
+
+// computeIssueFingerprint returns the fingerprint of req's result-determining fields (subject,
+// tenant, claims, audiences). Audiences are sorted before hashing so equivalent requests with
+// differently ordered audiences produce the same fingerprint.
+func computeIssueFingerprint(req *tokenv1.IssueTokenRequest) string {
+	audiences := append([]string{}, req.Audiences...)
+	sort.Strings(audiences)
+	return computeFingerprint(issueFingerprintInput{
+		Sub:       req.Sub,
+		TenantID:  req.TenantId,
+		Claims:    req.Claims,
+		Audiences: audiences,
+	})
+}
+
+// refreshFingerprintInput is the canonical, hashable projection of a RefreshTokenRequest's
+// result-determining fields — everything except IdempotencyKey. RefreshToken is included so the
+// hash binds to it, but only this struct's SHA-256 digest is ever persisted — the raw token
+// itself is never written to the store.
+type refreshFingerprintInput struct {
+	RefreshToken string            `json:"refresh_token"`
+	TenantID     string            `json:"tenant_id"`
+	Claims       map[string]string `json:"claims"`
+}
+
+// computeRefreshFingerprint returns the fingerprint of req's result-determining fields (refresh
+// token, tenant, claims). See refreshFingerprintInput for the no-raw-credential-at-rest guarantee.
+func computeRefreshFingerprint(req *tokenv1.RefreshTokenRequest) string {
+	return computeFingerprint(refreshFingerprintInput{
+		RefreshToken: req.RefreshToken,
+		TenantID:     req.TenantId,
+		Claims:       req.Claims,
+	})
 }
 
 // decodeIdempotencyRecord unmarshals raw into an idempotencyRecord. Returns ok=false when raw
@@ -82,28 +150,30 @@ func decodeIdempotencyRecord(raw []byte) (rec idempotencyRecord, ok bool) {
 }
 
 // resolveExistingRecord inspects bytes read from the store after a failed claim (SetNX
-// returned false). Returns (resp, true, nil) if a completed response — including a legacy
-// bare-TokenPair record predating the versioned envelope — was found. Returns (nil, false, nil)
-// if the record is still pending — the caller fails fast with codes.Aborted. Returns
-// (nil, false, err) if a completed record's response, or legacy bytes, failed to unmarshal.
-func resolveExistingRecord(raw []byte) (*tokenv1.TokenPair, bool, error) {
+// returned false). Returns (resp, fingerprint, true, nil) if a completed response — including a
+// legacy bare-TokenPair record predating the versioned envelope — was found; fingerprint is ""
+// for records written before it existed (legacy records and #127-era records), which the caller
+// treats as "no mismatch check possible" rather than a mismatch. Returns (nil, "", false, nil) if
+// the record is still pending — the caller fails fast with codes.Aborted. Returns
+// (nil, "", false, err) if a completed record's response, or legacy bytes, failed to unmarshal.
+func resolveExistingRecord(raw []byte) (*tokenv1.TokenPair, string, bool, error) {
 	if rec, ok := decodeIdempotencyRecord(raw); ok {
 		if rec.State == idempotencyStatePending {
-			return nil, false, nil
+			return nil, "", false, nil
 		}
 		var resp tokenv1.TokenPair
 		if err := proto.Unmarshal(rec.Response, &resp); err != nil {
-			return nil, false, err
+			return nil, "", false, err
 		}
-		return &resp, true, nil
+		return &resp, rec.Fingerprint, true, nil
 	}
 
 	// Legacy bare-TokenPair bytes, predating the versioned envelope.
 	var resp tokenv1.TokenPair
 	if err := proto.Unmarshal(raw, &resp); err != nil {
-		return nil, false, err
+		return nil, "", false, err
 	}
-	return &resp, true, nil
+	return &resp, "", true, nil
 }
 
 // PendingRecordForTest returns the fixed byte value SetNX writes to claim a key, for testing
@@ -112,18 +182,28 @@ func PendingRecordForTest() []byte {
 	return idempotencyPendingRecord
 }
 
-// EncodeCompletedRecordForTest returns the magic-prefixed versioned envelope wrapping response,
-// for testing purposes only.
-func EncodeCompletedRecordForTest(response []byte) []byte {
-	b, err := encodeCompletedRecord(response)
+// EncodeCompletedRecordForTest returns the magic-prefixed versioned envelope wrapping response
+// and fingerprint, for testing purposes only.
+func EncodeCompletedRecordForTest(response []byte, fingerprint string) []byte {
+	b, err := encodeCompletedRecord(response, fingerprint)
 	if err != nil {
 		panic(err)
 	}
 	return b
 }
 
+// ComputeIssueFingerprintForTest exposes computeIssueFingerprint, for testing purposes only.
+func ComputeIssueFingerprintForTest(req *tokenv1.IssueTokenRequest) string {
+	return computeIssueFingerprint(req)
+}
+
+// ComputeRefreshFingerprintForTest exposes computeRefreshFingerprint, for testing purposes only.
+func ComputeRefreshFingerprintForTest(req *tokenv1.RefreshTokenRequest) string {
+	return computeRefreshFingerprint(req)
+}
+
 // ResolveExistingRecordForTest exposes resolveExistingRecord, for testing purposes only.
-func ResolveExistingRecordForTest(raw []byte) (*tokenv1.TokenPair, bool, error) {
+func ResolveExistingRecordForTest(raw []byte) (*tokenv1.TokenPair, string, bool, error) {
 	return resolveExistingRecord(raw)
 }
 
@@ -133,11 +213,14 @@ func ResolveExistingRecordForTest(raw []byte) (*tokenv1.TokenPair, bool, error) 
 //
 // Ordering: the interceptor claims the idempotency key atomically before the handler runs. A
 // request that wins the claim proceeds to the handler; on success the claim is promoted to a
-// completed record holding the response. A request that loses the claim either receives the
-// cached response (the key already holds a completed record — the normal sequential-retry
-// case) or, if the key holds another request's still-pending claim, is rejected immediately
-// with codes.Aborted rather than blocking or racing the in-flight request. See ADR-012 for the
-// full design, including why concurrent duplicates fail fast instead of waiting.
+// completed record holding the response and a fingerprint of the request content that produced
+// it. A request that loses the claim either receives the cached response (the key already holds
+// a completed record whose fingerprint matches this request's own — the normal sequential-retry
+// case), is rejected with codes.FailedPrecondition (the key holds a completed record whose
+// fingerprint does not match — the key was reused with different request content, see ADR-013),
+// or, if the key holds another request's still-pending claim, is rejected immediately with
+// codes.Aborted rather than blocking or racing the in-flight request. See ADR-012 for the full
+// design, including why concurrent duplicates fail fast instead of waiting.
 //
 // CRITICAL ordering for RefreshToken: the idempotency claim MUST occur BEFORE the library call.
 // As of jwtauth v0.6.0 (#195), RefreshAccessTokenWithClaims revokes the old refresh token
@@ -189,12 +272,19 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 	// ===== STEP 4: Construct Redis key =====
 	key := idempotencyRedisPrefix + idempotencyKeySep + tenantID + idempotencyKeySep + idempotencyMethodIssue + idempotencyKeySep + clientKey
 
+	// ===== STEP 4.5: Compute this request's content fingerprint =====
+	fingerprint := computeIssueFingerprint(issueReq)
+
 	missLabels := map[string]string{
 		idempotencyLabelResult: idempotencyResultMiss,
 		idempotencyLabelMethod: info.FullMethod,
 	}
 	hitLabels := map[string]string{
 		idempotencyLabelResult: idempotencyResultHit,
+		idempotencyLabelMethod: info.FullMethod,
+	}
+	mismatchLabels := map[string]string{
+		idempotencyLabelResult: idempotencyResultMismatch,
 		idempotencyLabelMethod: info.FullMethod,
 	}
 
@@ -213,10 +303,14 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 			return nil, status.Error(codes.Aborted, idempotencyAbortedMsg)
 		}
 		if hit {
-			resp, isCompleted, resolveErr := resolveExistingRecord(cached)
+			resp, storedFingerprint, isCompleted, resolveErr := resolveExistingRecord(cached)
 			if resolveErr != nil {
 				logger.Warn(ctx, "idempotency cached record unreadable; treating as concurrent duplicate", "error", resolveErr)
 			} else if isCompleted {
+				if storedFingerprint != "" && storedFingerprint != fingerprint {
+					metrics.IncrementCounter(observability.MetricIdempotencyTotal, mismatchLabels)
+					return nil, status.Error(codes.FailedPrecondition, idempotencyFingerprintMismatchMsg)
+				}
 				metrics.IncrementCounter(observability.MetricIdempotencyTotal, hitLabels)
 				return resp, nil
 			}
@@ -234,7 +328,7 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 	// ===== STEP 8: Promote the claim to a completed record =====
 	if issueResp, ok := resp.(*tokenv1.TokenPair); ok {
 		if marshaledBytes, marshalErr := proto.Marshal(issueResp); marshalErr == nil {
-			if recordBytes, encodeErr := encodeCompletedRecord(marshaledBytes); encodeErr == nil {
+			if recordBytes, encodeErr := encodeCompletedRecord(marshaledBytes, fingerprint); encodeErr == nil {
 				if setErr := st.Set(ctx, key, recordBytes); setErr != nil {
 					logger.Warn(ctx, "idempotency store Set (promote) error", "error", setErr)
 				}
@@ -272,12 +366,19 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 	// ===== STEP 4: Construct Redis key =====
 	key := idempotencyRedisPrefix + idempotencyKeySep + tenantID + idempotencyKeySep + idempotencyMethodRefresh + idempotencyKeySep + clientKey
 
+	// ===== STEP 4.5: Compute this request's content fingerprint =====
+	fingerprint := computeRefreshFingerprint(refreshReq)
+
 	missLabels := map[string]string{
 		idempotencyLabelResult: idempotencyResultMiss,
 		idempotencyLabelMethod: info.FullMethod,
 	}
 	hitLabels := map[string]string{
 		idempotencyLabelResult: idempotencyResultHit,
+		idempotencyLabelMethod: info.FullMethod,
+	}
+	mismatchLabels := map[string]string{
+		idempotencyLabelResult: idempotencyResultMismatch,
 		idempotencyLabelMethod: info.FullMethod,
 	}
 
@@ -298,10 +399,14 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 			return nil, status.Error(codes.Aborted, idempotencyAbortedMsg)
 		}
 		if hit {
-			resp, isCompleted, resolveErr := resolveExistingRecord(cached)
+			resp, storedFingerprint, isCompleted, resolveErr := resolveExistingRecord(cached)
 			if resolveErr != nil {
 				logger.Warn(ctx, "idempotency cached record unreadable; treating as concurrent duplicate", "error", resolveErr)
 			} else if isCompleted {
+				if storedFingerprint != "" && storedFingerprint != fingerprint {
+					metrics.IncrementCounter(observability.MetricIdempotencyTotal, mismatchLabels)
+					return nil, status.Error(codes.FailedPrecondition, idempotencyFingerprintMismatchMsg)
+				}
 				metrics.IncrementCounter(observability.MetricIdempotencyTotal, hitLabels)
 				return resp, nil
 			}
@@ -319,7 +424,7 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 	// ===== STEP 8: Promote the claim to a completed record =====
 	if refreshResp, ok := resp.(*tokenv1.TokenPair); ok {
 		if marshaledBytes, marshalErr := proto.Marshal(refreshResp); marshalErr == nil {
-			if recordBytes, encodeErr := encodeCompletedRecord(marshaledBytes); encodeErr == nil {
+			if recordBytes, encodeErr := encodeCompletedRecord(marshaledBytes, fingerprint); encodeErr == nil {
 				if setErr := st.Set(ctx, key, recordBytes); setErr != nil {
 					logger.Warn(ctx, "idempotency store Set (promote) error", "error", setErr)
 				}
