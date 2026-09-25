@@ -28,7 +28,7 @@ const (
 type RevocationEvent struct {
 	TenantID       string
 	CallerIdentity string
-	TokenID        string // populated for Scope="token"; "" otherwise
+	TokenRef       string // tokenref.Ref digest of the revoked refresh token — populated for Scope="token"; "" otherwise. The raw token must never enter the audit layer.
 	Target         string // populated for Scope="audience" (audience value) and Scope="user"/"user_audience" (user ID); "" for Scope="token"
 	Scope          string // "token", "audience", "user", "user_audience"
 	OccurredAt     time.Time

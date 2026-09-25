@@ -69,6 +69,7 @@ func (s *SlogLogger) With(keysAndValues ...interface{}) Logger {
 // ===== LibraryLoggerAdapter =====
 
 // LibraryLoggerAdapter wraps the service Logger and implements the library logging.Logger interface.
+// Values of library keys that carried credentials in jwtauth <= v1.1.0 are redacted on every call.
 type LibraryLoggerAdapter struct {
 	logger Logger
 }
@@ -78,34 +79,39 @@ func NewLibraryLoggerAdapter(logger Logger) *LibraryLoggerAdapter {
 	return &LibraryLoggerAdapter{logger: logger}
 }
 
-// Debug logs a debug-level message using context.Background().
+// Debug logs a debug-level message using context.Background(). Values of deny-listed
+// credential keys are replaced with "[REDACTED]" — the caller's slice is not modified.
 func (a *LibraryLoggerAdapter) Debug(msg string, keysAndValues ...interface{}) {
 	// context discarded — library Logger interface has no ctx parameter
-	a.logger.Debug(context.Background(), msg, keysAndValues...)
+	a.logger.Debug(context.Background(), msg, redactKeysAndValues(keysAndValues)...)
 }
 
-// Info logs an info-level message using context.Background().
+// Info logs an info-level message using context.Background(). Values of deny-listed
+// credential keys are replaced with "[REDACTED]" — the caller's slice is not modified.
 func (a *LibraryLoggerAdapter) Info(msg string, keysAndValues ...interface{}) {
 	// context discarded — library Logger interface has no ctx parameter
-	a.logger.Info(context.Background(), msg, keysAndValues...)
+	a.logger.Info(context.Background(), msg, redactKeysAndValues(keysAndValues)...)
 }
 
-// Warn logs a warn-level message using context.Background().
+// Warn logs a warn-level message using context.Background(). Values of deny-listed
+// credential keys are replaced with "[REDACTED]" — the caller's slice is not modified.
 func (a *LibraryLoggerAdapter) Warn(msg string, keysAndValues ...interface{}) {
 	// context discarded — library Logger interface has no ctx parameter
-	a.logger.Warn(context.Background(), msg, keysAndValues...)
+	a.logger.Warn(context.Background(), msg, redactKeysAndValues(keysAndValues)...)
 }
 
-// Error logs an error-level message using context.Background().
+// Error logs an error-level message using context.Background(). Values of deny-listed
+// credential keys are replaced with "[REDACTED]" — the caller's slice is not modified.
 func (a *LibraryLoggerAdapter) Error(msg string, keysAndValues ...interface{}) {
 	// context discarded — library Logger interface has no ctx parameter
-	a.logger.Error(context.Background(), msg, keysAndValues...)
+	a.logger.Error(context.Background(), msg, redactKeysAndValues(keysAndValues)...)
 }
 
 // With returns a new LibraryLoggerAdapter wrapping the logger with additional fields bound.
+// Values of deny-listed credential keys are redacted before binding.
 func (a *LibraryLoggerAdapter) With(keysAndValues ...interface{}) logging.Logger {
 	// context discarded — library Logger interface has no ctx parameter
-	newLogger := a.logger.With(keysAndValues...)
+	newLogger := a.logger.With(redactKeysAndValues(keysAndValues)...)
 	return &LibraryLoggerAdapter{logger: newLogger}
 }
 
