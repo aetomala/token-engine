@@ -9,6 +9,7 @@ import (
 	"github.com/aetomala/token-engine/internal/audit"
 	"github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/registry"
+	"github.com/aetomala/token-engine/internal/tokenref"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -237,7 +238,7 @@ func (h *TokenHandler) RevokeToken(ctx context.Context, req *tokenv1.RevokeToken
 	event := audit.RevocationEvent{
 		TenantID:       req.TenantId,
 		CallerIdentity: observability.CallerIdentityFromContext(ctx),
-		TokenID:        tokenMetadata.TokenID,
+		TokenRef:       tokenref.Ref(tokenMetadata.TokenID),
 		Target:         "",
 		Scope:          audit.RevocationScopeToken,
 		OccurredAt:     time.Now().UTC(),
@@ -292,7 +293,7 @@ func (h *TokenHandler) RevokeAllForAudience(ctx context.Context, req *tokenv1.Re
 	event := audit.RevocationEvent{
 		TenantID:       req.TenantId,
 		CallerIdentity: observability.CallerIdentityFromContext(ctx),
-		TokenID:        "",
+		TokenRef:       "",
 		Target:         req.Audience,
 		Scope:          audit.RevocationScopeAudience,
 		OccurredAt:     time.Now().UTC(),
@@ -347,7 +348,7 @@ func (h *TokenHandler) RevokeAllUserTokens(ctx context.Context, req *tokenv1.Rev
 	event := audit.RevocationEvent{
 		TenantID:       req.TenantId,
 		CallerIdentity: observability.CallerIdentityFromContext(ctx),
-		TokenID:        "",
+		TokenRef:       "",
 		Target:         req.UserId,
 		Scope:          audit.RevocationScopeUser,
 		OccurredAt:     time.Now().UTC(),
@@ -397,7 +398,7 @@ func (h *TokenHandler) RevokeAllForUserAndAudience(ctx context.Context, req *tok
 	event := audit.RevocationEvent{
 		TenantID:       tenantID,
 		CallerIdentity: observability.CallerIdentityFromContext(ctx),
-		TokenID:        "",
+		TokenRef:       "",
 		Target:         req.UserId,
 		Scope:          audit.RevocationScopeUserAudience,
 		OccurredAt:     time.Now().UTC(),

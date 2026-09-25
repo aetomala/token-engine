@@ -9,6 +9,26 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.2.1] — 2026-09-25
+
+### Security
+
+- Fixed refresh tokens appearing in plaintext in token-engine's log stream
+  ([GHSA-3qw9-68m5-hgqc](https://github.com/aetomala/token-engine/security/advisories/GHSA-3qw9-68m5-hgqc)).
+  Bumped `github.com/aetomala/jwtauth` to v1.1.1, which logs refresh tokens only as `tokenRef`,
+  a truncated SHA-256 digest
+  ([jwtauth GHSA-hwqw-6hv9-q5v6](https://github.com/aetomala/jwtauth/security/advisories/GHSA-hwqw-6hv9-q5v6))
+- The `RevokeToken` audit record now carries `token_ref` — the same digest — instead of the raw
+  refresh token under `token_id`; `RevocationEvent.TokenID` is renamed to `TokenRef` and the raw
+  token never enters the audit layer. Audit consumers reading `token_id` must switch to
+  `token_ref` (see [MIGRATION.md](doc/MIGRATION.md#v120--v121))
+- The jwtauth logger and span adapters now redact values under the library keys `token`, `key`,
+  `cursor`, and `next_cursor` to `[REDACTED]` as defense in depth against older library versions
+- Added a service-level leak-regression test that drives every token RPC over gRPC with real
+  JSON logging, the audit store, and an in-memory OTel exporter, and fails if any fragment of an
+  issued or presented token appears in logs, exported spans, or error messages returned to the
+  client
+
 ## [v1.2.0] — 2026-09-22
 
 ### Fixed

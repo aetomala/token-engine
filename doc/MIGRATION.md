@@ -346,3 +346,46 @@ code changes are required to benefit from them.
 - No caller needs to change anything for the field's new deprecated status — it isn't removed,
   and there's no removal timeline yet. New integrations should just prefer the header going
   forward; existing callers on the field are not broken and don't need to migrate immediately.
+
+## v1.2.0 → v1.2.1
+
+### What changed
+
+Security release — see [GHSA-3qw9-68m5-hgqc](https://github.com/aetomala/token-engine/security/advisories/GHSA-3qw9-68m5-hgqc).
+No config, environment variable, or gRPC API changes.
+
+- **Audit record field `token_id` renamed to `token_ref`.** The `token revoked` audit line
+  emitted by `SlogAuditStore` for `RevokeToken` now carries `token_ref` — the first 16 lowercase
+  hex characters of the SHA-256 digest of the revoked refresh token — instead of `token_id`. The
+  value is a non-reversible digest, not the token. `token_ref` is `""` for the bulk revocation
+  RPCs, as `token_id` was.
+- **`github.com/aetomala/jwtauth` bumped to v1.1.1.** Library log lines forwarded into
+  token-engine's log stream change keys:
+  - Refresh tokens appear only as `tokenRef`, using the same digest algorithm as the audit
+    record's `token_ref` — a revocation audit line and the library's log lines for the same
+    token carry the same value and can be joined on it.
+  - `tokenID` / `token_id` in library log lines now carry only an access-token `jti` (a UUID).
+  - Values under the library keys `token`, `key`, `cursor`, and `next_cursor` are replaced with
+    `[REDACTED]` by token-engine's library logger adapter, as defense in depth against older
+    library versions.
+
+### Required actions
+
+1. **Update audit consumers.** Any SIEM rule, log query, dashboard, or retention job that reads
+   `token_id` from `token revoked` records must read `token_ref` instead. To locate the audit
+   record for a known refresh token, compute the first 16 hex characters of its SHA-256 digest
+   (`printf '%s' "$TOKEN" | sha256sum | cut -c1-16`) and match on `token_ref`.
+2. **Update library-log queries** that matched on `token`, `key`, `cursor`, or `next_cursor`
+   values — those values are now `[REDACTED]`. Use `tokenRef` for refresh-token correlation.
+3. **Treat logs written by earlier versions as credential-bearing.** Restrict access to, or
+   purge, token-engine logs retained from before this upgrade.
+4. **Do not enable command-level Redis tracing or logging** — `MONITOR`, `SLOWLOG` exports, or
+   client command hooks. Redis keys contain raw refresh tokens, and completed idempotency records
+   contain full token pairs for `TOKEN_ENGINE_IDEMPOTENCY_TTL`. Treat Redis RDB/AOF files and
+   backups as credential stores.
+
+### Consequences if skipped
+
+- Audit consumers keyed on `token_id` silently stop matching `RevokeToken` records — the field
+  is absent from new lines. Revocations still succeed and are still audited.
+- Queries on the redacted library keys return `[REDACTED]` instead of a value.
