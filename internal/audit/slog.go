@@ -12,7 +12,7 @@ import (
 const (
 	auditKeyTenantID       = "tenant_id"
 	auditKeyCallerIdentity = "caller_identity"
-	auditKeyTokenID        = "token_id"
+	auditKeyTokenRef       = "token_ref"
 	auditKeyTarget         = "target"
 	auditKeyScope          = "scope"
 	auditKeyOccurredAt     = "occurred_at"
@@ -45,7 +45,7 @@ func (s *SlogAuditStore) RecordRevocation(ctx context.Context, event RevocationE
 	s.logger.Info(ctx, "token revoked",
 		auditKeyTenantID, event.TenantID,
 		auditKeyCallerIdentity, event.CallerIdentity,
-		auditKeyTokenID, event.TokenID,
+		auditKeyTokenRef, event.TokenRef,
 		auditKeyTarget, event.Target,
 		auditKeyScope, event.Scope,
 		auditKeyOccurredAt, event.OccurredAt.Format(time.RFC3339),

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/aetomala/token-engine/internal/handler"
 	obs "github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/testutil"
+	"github.com/aetomala/token-engine/internal/tokenref"
 	"github.com/aetomala/jwtauth/pkg/keys"
 	"github.com/aetomala/jwtauth/pkg/storage"
 	"github.com/aetomala/jwtauth/pkg/tokens"
@@ -521,18 +523,45 @@ Describe("Phase 3: RevokeToken", func() {
 	})
 
 	Context("when RevokeRefreshToken succeeds", func() {
-		It("calls RecordRevocation with Scope=token and TokenID from IntrospectToken", func() {
+		It("calls RecordRevocation with Scope=token and TokenRef derived from IntrospectToken", func() {
 			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
 			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
 			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: "tok-123"}, nil)
 			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), "tok-123").Return(nil)
 			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Cond(func(v interface{}) bool {
 				e, ok := v.(audit.RevocationEvent)
-				return ok && e.Scope == audit.RevocationScopeToken && e.TokenID == "tok-123"
+				return ok && e.Scope == audit.RevocationScopeToken && e.TokenRef == tokenref.Ref("tok-123")
 			})).Return(nil)
 			resp, err := h.RevokeToken(ctx, req)
 			Expect(err).To(BeNil())
 			Expect(resp).NotTo(BeNil())
+		})
+
+		It("records TokenRef as the digest of the presented token and never the raw token", func() {
+			// ===== STEP 1: Wire mocks — jwtauth refresh tokens are their own storage key =====
+			var recorded audit.RevocationEvent
+			mockAuditStore.EXPECT().Ping(gomock.Any()).Return(nil)
+			mockReg.EXPECT().Get(gomock.Any(), req.TenantId).Return(mockTM, nil)
+			mockTM.EXPECT().IntrospectToken(gomock.Any(), req.RefreshToken).Return(&tokens.TokenMetadata{TokenID: req.RefreshToken}, nil)
+			mockTM.EXPECT().RevokeRefreshToken(gomock.Any(), req.RefreshToken).Return(nil)
+			mockAuditStore.EXPECT().RecordRevocation(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, e audit.RevocationEvent) error {
+					recorded = e
+					return nil
+				})
+
+			// ===== STEP 2: Revoke =====
+			_, err := h.RevokeToken(ctx, req)
+			Expect(err).To(BeNil())
+
+			// ===== STEP 3: Assert digest recorded, raw token absent from every field =====
+			Expect(recorded.TokenRef).To(Equal(tokenref.Ref(req.RefreshToken)))
+			Expect(recorded.TenantID).NotTo(ContainSubstring(req.RefreshToken))
+			Expect(recorded.CallerIdentity).NotTo(ContainSubstring(req.RefreshToken))
+			Expect(recorded.TokenRef).NotTo(ContainSubstring(req.RefreshToken))
+			Expect(recorded.Target).NotTo(ContainSubstring(req.RefreshToken))
+			Expect(recorded.Scope).NotTo(ContainSubstring(req.RefreshToken))
+			Expect(fmt.Sprintf("%+v", recorded)).NotTo(ContainSubstring(req.RefreshToken))
 		})
 
 		It("returns empty RevokeTokenResponse and nil error", func() {

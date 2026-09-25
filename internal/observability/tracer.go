@@ -106,6 +106,7 @@ func (t *LibraryOtelTracer) Start(ctx context.Context, name string) (context.Con
 }
 
 // LibraryOtelSpan wraps an OpenTelemetry span and implements the library tracing.Span interface.
+// Values of library attribute keys that carried credentials in jwtauth <= v1.1.0 are redacted.
 type LibraryOtelSpan struct {
 	span oteltrace.Span
 }
@@ -116,7 +117,11 @@ func (s *LibraryOtelSpan) End() {
 }
 
 // SetAttribute sets a single attribute on the span, converting non-string values using Sprintf.
+// The value of a deny-listed credential key is replaced with "[REDACTED]".
 func (s *LibraryOtelSpan) SetAttribute(key string, value interface{}) {
+	if isRedactedKey(key) {
+		value = redactedValue
+	}
 	var attr attribute.KeyValue
 	switch v := value.(type) {
 	case string:
@@ -128,9 +133,13 @@ func (s *LibraryOtelSpan) SetAttribute(key string, value interface{}) {
 }
 
 // SetAttributes sets multiple attributes on the span, converting non-string values using Sprintf.
+// Values of deny-listed credential keys are replaced with "[REDACTED]" — the caller's map is not modified.
 func (s *LibraryOtelSpan) SetAttributes(attrs map[string]interface{}) {
 	kvs := make([]attribute.KeyValue, 0, len(attrs))
 	for k, v := range attrs {
+		if isRedactedKey(k) {
+			v = redactedValue
+		}
 		switch val := v.(type) {
 		case string:
 			kvs = append(kvs, attribute.String(k, val))

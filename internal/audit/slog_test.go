@@ -54,7 +54,7 @@ var _ = Describe("SlogAuditStore", func() {
 				event := audit.RevocationEvent{
 					TenantID:       "tenant-1",
 					CallerIdentity: "caller-1",
-					TokenID:        "tok-abc",
+					TokenRef:       "5d699dd34a86ef68",
 					Target:         "",
 					Scope:          audit.RevocationScopeToken,
 					OccurredAt:     time.Now().UTC(),
@@ -62,7 +62,7 @@ var _ = Describe("SlogAuditStore", func() {
 				mockLogger.EXPECT().Info(gomock.Any(), "token revoked",
 					"tenant_id", event.TenantID,
 					"caller_identity", event.CallerIdentity,
-					"token_id", event.TokenID,
+					"token_ref", event.TokenRef,
 					"target", event.Target,
 					"scope", event.Scope,
 					"occurred_at", event.OccurredAt.Format(time.RFC3339),
@@ -73,11 +73,11 @@ var _ = Describe("SlogAuditStore", func() {
 		})
 
 		Context("RecordRevocation — Scope=audience", func() {
-			It("emits target as audience value and token_id as empty string, returns nil", func() {
+			It("emits target as audience value and token_ref as empty string, returns nil", func() {
 				event := audit.RevocationEvent{
 					TenantID:       "tenant-1",
 					CallerIdentity: "caller-1",
-					TokenID:        "",
+					TokenRef:       "",
 					Target:         "api",
 					Scope:          audit.RevocationScopeAudience,
 					OccurredAt:     time.Now().UTC(),
@@ -85,7 +85,7 @@ var _ = Describe("SlogAuditStore", func() {
 				mockLogger.EXPECT().Info(gomock.Any(), "token revoked",
 					"tenant_id", event.TenantID,
 					"caller_identity", event.CallerIdentity,
-					"token_id", event.TokenID,
+					"token_ref", event.TokenRef,
 					"target", event.Target,
 					"scope", event.Scope,
 					"occurred_at", event.OccurredAt.Format(time.RFC3339),
@@ -96,11 +96,11 @@ var _ = Describe("SlogAuditStore", func() {
 		})
 
 		Context("RecordRevocation — Scope=user", func() {
-			It("emits target as user ID value and token_id as empty string, returns nil", func() {
+			It("emits target as user ID value and token_ref as empty string, returns nil", func() {
 				event := audit.RevocationEvent{
 					TenantID:       "tenant-1",
 					CallerIdentity: "caller-1",
-					TokenID:        "",
+					TokenRef:       "",
 					Target:         "user-1",
 					Scope:          audit.RevocationScopeUser,
 					OccurredAt:     time.Now().UTC(),
@@ -108,7 +108,7 @@ var _ = Describe("SlogAuditStore", func() {
 				mockLogger.EXPECT().Info(gomock.Any(), "token revoked",
 					"tenant_id", event.TenantID,
 					"caller_identity", event.CallerIdentity,
-					"token_id", event.TokenID,
+					"token_ref", event.TokenRef,
 					"target", event.Target,
 					"scope", event.Scope,
 					"occurred_at", event.OccurredAt.Format(time.RFC3339),

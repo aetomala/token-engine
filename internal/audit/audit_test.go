@@ -27,7 +27,7 @@ var _ = Describe("NoOpAuditStore", func() {
 				event := audit.RevocationEvent{
 					TenantID:       "tenant-1",
 					CallerIdentity: "caller-1",
-					TokenID:        "token-1",
+					TokenRef:       "5d699dd34a86ef68",
 					Scope:          "token",
 					OccurredAt:     time.Now(),
 				}

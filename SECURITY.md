@@ -4,8 +4,8 @@
 
 | Version | Support |
 |---|---|
-| v0.1.x | Active development — security fixes applied |
-| < v0.1.0 | None |
+| v1.2.x | Full support — security fixes applied |
+| < v1.2.0 | None |
 
 ## Reporting a Vulnerability
 
