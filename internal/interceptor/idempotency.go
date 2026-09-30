@@ -21,11 +21,10 @@ const (
 	grpcMethodIssueToken   = "/token.v1.TokenEngine/IssueToken"
 	grpcMethodRefreshToken = "/token.v1.TokenEngine/RefreshToken"
 
-	idempotencyRedisPrefix     = "idempotency"
-	idempotencyKeySep          = ":"
-	idempotencyDefaultTenantID = "default"
-	idempotencyMethodIssue     = "IssueToken"
-	idempotencyMethodRefresh   = "RefreshToken"
+	idempotencyRedisPrefix   = "idempotency"
+	idempotencyKeySep        = ":"
+	idempotencyMethodIssue   = "IssueToken"
+	idempotencyMethodRefresh = "RefreshToken"
 
 	idempotencyResultHit      = "hit"
 	idempotencyResultMiss     = "miss"
@@ -36,6 +35,7 @@ const (
 	idempotencyAbortedMsg             = "a request with this idempotency key is already in progress; retry"
 	idempotencyFingerprintMismatchMsg = "this idempotency key was previously used with different request content; use a new key"
 	idempotencyKeyConflictMsg         = "idempotency_key request field and x-idempotency-key metadata header are both set but differ; set only one"
+	idempotencyEmptyTenantMsg         = "tenant_id not set; validation interceptor must run first"
 )
 
 // idempotencyRecordMagic prefixes every record written in the versioned envelope format. Bytes
@@ -267,6 +267,11 @@ func ResolveIdempotencyKeyForTest(headerKey, fieldKey string) (string, error) {
 // immediately. A retry arriving after the first call will receive ErrTokenRevoked from the
 // library — the cached response must be returned before the library is ever called.
 //
+// Chain position: runs after the validation interceptor, so a request that fails validation
+// never writes a claim — see ADR-016. An empty tenant_id therefore cannot reach this interceptor
+// in a correctly wired chain; if one does, the call is rejected with codes.Internal and an Error
+// log, without touching the store or the handler.
+//
 // Key construction: idempotency:{tenantID}:{method}:{clientKey}
 // where method is "IssueToken" or "RefreshToken".
 //
@@ -301,7 +306,8 @@ func handleIssueTokenIdempotency(ctx context.Context, req interface{}, info *grp
 	}
 	tenantID := issueReq.TenantId
 	if tenantID == "" {
-		tenantID = idempotencyDefaultTenantID
+		logger.Error(ctx, "idempotency interceptor: empty tenant_id reached the interceptor; validation must run first", "method", info.FullMethod)
+		return nil, status.Error(codes.Internal, idempotencyEmptyTenantMsg)
 	}
 
 	// ===== STEP 3: Resolve the effective client key (header, field, or both — see ADR-014) =====
@@ -400,7 +406,8 @@ func handleRefreshTokenIdempotency(ctx context.Context, req interface{}, info *g
 	}
 	tenantID := refreshReq.TenantId
 	if tenantID == "" {
-		tenantID = idempotencyDefaultTenantID
+		logger.Error(ctx, "idempotency interceptor: empty tenant_id reached the interceptor; validation must run first", "method", info.FullMethod)
+		return nil, status.Error(codes.Internal, idempotencyEmptyTenantMsg)
 	}
 
 	// ===== STEP 3: Resolve the effective client key (header, field, or both — see ADR-014) =====

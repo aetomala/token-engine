@@ -99,7 +99,7 @@ func setup() error {
 	}
 	benchKM = tenantReg.AllKeyManagers()[cfg.Issuer]
 
-	// ===== Shared handler (auth + idempotency + validation interceptors) =====
+	// ===== Shared handler (auth + validation + idempotency interceptors) =====
 	idempStore := store.NewRedisIdempotencyStore(redisClient, cfg.IdempotencyTTL, cfg.LockTTL)
 	auth := interceptor.NewStaticKeyAuthenticator(cfg.StaticCallerKeys)
 	callerReg := registry.NewStaticCallerRegistry(&registry.CallerRegistryConfig{
@@ -115,8 +115,8 @@ func setup() error {
 			observability.NewCorrelationInterceptor(logger, metrics),
 			interceptor.NewAuthInterceptor(auth, logger),
 			interceptor.NewCallerAuthorizationInterceptor(callerReg, logger),
-			interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics),
 			interceptor.NewValidationInterceptor(logger),
+			interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics),
 		)
 	}
 

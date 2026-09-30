@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A request that carries an idempotency key and fails validation no longer leaves a pending idempotency
+  claim behind. Validation now runs before the idempotency interceptor, so a corrected retry with the same
+  key reaches the handler instead of receiving `codes.Aborted`, and an empty `tenant_id` is rejected with
+  `codes.InvalidArgument` on every attempt. The `"default"` tenant fallback in idempotency keys is removed.
+  See ADR-016 ([#154](https://github.com/aetomala/token-engine/issues/154))
+
 ### Chore
 
 - Enforce gofmt through golangci-lint so `make lint` and CI fail on unformatted files; reformatted

@@ -115,7 +115,7 @@ underlying jwtauth library (measured in [jwtauth doc/PERFORMANCE.md](https://git
 The ~774 µs gRPC overhead for issuance breaks down as (approximate):
 - Loopback TCP round-trip + gRPC HTTP/2 framing: ~350–450 µs
 - Protobuf serialization/deserialization: ~20–40 µs
-- Five interceptor chain passes (correlation → auth → caller authz → idempotency → validation): ~250–350 µs
+- Five interceptor chain passes (correlation → auth → caller authz → validation → idempotency): ~250–350 µs
   - Idempotency interceptor includes a Redis round-trip to miniredis
 - jwtauth Redis storage layer (miniredis `Store`): ~35–42 µs
 
