@@ -1,4 +1,4 @@
-.PHONY: build test coverage lint proto-gen ci benchmark docker-build cd clean examples-build examples-tidy
+.PHONY: build test coverage fmt lint proto-gen ci benchmark docker-build cd clean examples-build examples-tidy
 
 BINARY   := token-engine
 PKG      := ./...
@@ -16,6 +16,9 @@ test:
 coverage:
 	ginkgo -r --race --cover --coverprofile=coverage.out $(TEST_PKG)
 	go tool cover -html=coverage.out -o coverage.html
+
+fmt:
+	gofmt -w .
 
 lint:
 	go vet $(PKG)
