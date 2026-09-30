@@ -33,6 +33,7 @@ var (
 	conn       *grpc.ClientConn
 	client     tokenv1.TokenEngineClient
 	km         interface{ Shutdown(context.Context) error }
+	auditSpy   *pingCountingAuditStore
 )
 
 var _ = BeforeSuite(func() {
@@ -102,7 +103,8 @@ var _ = BeforeSuite(func() {
 			idempotencyInterceptor,
 		),
 	)
-	tokenHandler := handler.NewTokenHandler(tenantReg, audit.NewNoOpAuditStore(), logger, tracer, metrics)
+	auditSpy = &pingCountingAuditStore{Store: audit.NewNoOpAuditStore()}
+	tokenHandler := handler.NewTokenHandler(tenantReg, auditSpy, logger, tracer, metrics)
 	tokenv1.RegisterTokenEngineServer(grpcServer, tokenHandler)
 
 	// ===== Listen on a random port =====
@@ -297,6 +299,20 @@ var _ = Describe("TokenEngine", func() {
 				Expect(status.Code(err)).NotTo(Equal(codes.OK))
 			})
 		})
+
+		Context("when refresh_token is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+
+				_, err := client.RefreshToken(ctx, &tokenv1.RefreshTokenRequest{
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("refresh_token"))
+			})
+		})
 	})
 
 	// ===== RevokeToken =====
@@ -327,6 +343,22 @@ var _ = Describe("TokenEngine", func() {
 					TenantId:     "test-issuer",
 				})
 				Expect(status.Code(err)).NotTo(Equal(codes.OK))
+			})
+		})
+
+		Context("when refresh_token is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field without pinging the audit store", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+				pingsBefore := auditSpy.Pings()
+
+				_, err := client.RevokeToken(ctx, &tokenv1.RevokeTokenRequest{
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("refresh_token"))
+				Expect(auditSpy.Pings()).To(Equal(pingsBefore), "audit store Ping must not be called for a rejected request")
 			})
 		})
 	})
@@ -361,6 +393,22 @@ var _ = Describe("TokenEngine", func() {
 				Expect(status.Code(err)).NotTo(Equal(codes.OK))
 			})
 		})
+
+		Context("when audience is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field without pinging the audit store", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+				pingsBefore := auditSpy.Pings()
+
+				_, err := client.RevokeAllForAudience(ctx, &tokenv1.RevokeAudienceRequest{
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("audience"))
+				Expect(auditSpy.Pings()).To(Equal(pingsBefore), "audit store Ping must not be called for a rejected request")
+			})
+		})
 	})
 
 	// ===== RevokeAllUserTokens =====
@@ -391,6 +439,22 @@ var _ = Describe("TokenEngine", func() {
 					TenantId:     "test-issuer",
 				})
 				Expect(status.Code(err)).NotTo(Equal(codes.OK))
+			})
+		})
+
+		Context("when user_id is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field without pinging the audit store", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+				pingsBefore := auditSpy.Pings()
+
+				_, err := client.RevokeAllUserTokens(ctx, &tokenv1.RevokeUserRequest{
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("user_id"))
+				Expect(auditSpy.Pings()).To(Equal(pingsBefore), "audit store Ping must not be called for a rejected request")
 			})
 		})
 	})
@@ -424,6 +488,40 @@ var _ = Describe("TokenEngine", func() {
 					TenantId:     "test-issuer",
 				})
 				Expect(status.Code(err)).NotTo(Equal(codes.OK))
+			})
+		})
+
+		Context("when user_id is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field without pinging the audit store", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+				pingsBefore := auditSpy.Pings()
+
+				_, err := client.RevokeAllForUserAndAudience(ctx, &tokenv1.RevokeUserAndAudienceRequest{
+					Audience: "api",
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("user_id"))
+				Expect(auditSpy.Pings()).To(Equal(pingsBefore), "audit store Ping must not be called for a rejected request")
+			})
+		})
+
+		Context("when audience is empty (issue #158)", func() {
+			It("returns codes.InvalidArgument naming the field without pinging the audit store", func() {
+				ctx, cancel := authCtx()
+				defer cancel()
+				pingsBefore := auditSpy.Pings()
+
+				_, err := client.RevokeAllForUserAndAudience(ctx, &tokenv1.RevokeUserAndAudienceRequest{
+					UserId:   "user-empty-audience",
+					TenantId: "test-issuer",
+				})
+
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(status.Convert(err).Message()).To(ContainSubstring("audience"))
+				Expect(auditSpy.Pings()).To(Equal(pingsBefore), "audit store Ping must not be called for a rejected request")
 			})
 		})
 	})

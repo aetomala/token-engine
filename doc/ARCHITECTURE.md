@@ -88,7 +88,8 @@ CallerAuthz interceptor — checks caller identity against tenant's allowed call
   │  ← PERMISSION_DENIED if caller not authorized
   ▼
 Validation interceptor  — validates required fields before any idempotency claim [ADR-016]
-  │  ← INVALID_ARGUMENT on empty tenant_id, empty sub, or a reserved claim key
+  │  ← INVALID_ARGUMENT on empty tenant_id, an empty primary identifier (sub, refresh_token,
+  │    user_id, or audience — whichever the RPC requires), or a reserved claim key
   ▼
 Idempotency interceptor — resolves the effective key from the `x-idempotency-key` metadata header
                            and/or the deprecated `idempotency_key` request field; header and field
