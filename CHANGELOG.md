@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Chore
+
+- Enforce gofmt through golangci-lint so `make lint` and CI fail on unformatted files; reformatted
+  existing drift across the repository ([#164](https://github.com/aetomala/token-engine/issues/164))
+
 ## [v1.2.1] — 2026-09-25
 
 ### Security
