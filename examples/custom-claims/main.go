@@ -44,9 +44,9 @@ type tokenClaims struct {
 }
 
 func main() {
-	addr     := envOrDefault("TOKEN_ENGINE_ADDR",      "localhost:9090")
+	addr := envOrDefault("TOKEN_ENGINE_ADDR", "localhost:9090")
 	httpAddr := envOrDefault("TOKEN_ENGINE_HTTP_ADDR", "localhost:8080")
-	key      := envOrDefault("TOKEN_ENGINE_STATIC_KEY", "example-key")
+	key := envOrDefault("TOKEN_ENGINE_STATIC_KEY", "example-key")
 
 	// ===== Connect =====
 	c, err := client.NewClient(addr,

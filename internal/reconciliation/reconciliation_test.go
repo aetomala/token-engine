@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/aetomala/jwtauth/pkg/tokens"
-	. "github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/observability"
+	. "github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/aetomala/jwtauth/pkg/keys"
 	"github.com/aetomala/token-engine/internal/health"
 	"github.com/aetomala/token-engine/internal/reconciliation"
 	"github.com/aetomala/token-engine/internal/testutil"
+	"github.com/alicebob/miniredis/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redis/go-redis/v9"

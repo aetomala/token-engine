@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/aetomala/token-engine/internal/store"
+	"github.com/alicebob/miniredis/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redis/go-redis/v9"

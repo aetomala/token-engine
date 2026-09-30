@@ -21,10 +21,10 @@ import (
 // This guard applies to: RevokeToken, RevokeAllForAudience, RevokeAllUserTokens.
 
 const (
-	spanNameRevokeToken                    = "RevokeToken"
-	spanNameRevokeAllForAudience           = "RevokeAllForAudience"
-	spanNameRevokeAllUserTokens            = "RevokeAllUserTokens"
-	spanNameRevokeAllForUserAndAudience    = "RevokeAllForUserAndAudience"
+	spanNameRevokeToken                 = "RevokeToken"
+	spanNameRevokeAllForAudience        = "RevokeAllForAudience"
+	spanNameRevokeAllUserTokens         = "RevokeAllUserTokens"
+	spanNameRevokeAllForUserAndAudience = "RevokeAllForUserAndAudience"
 )
 
 // TokenHandler implements the TokenEngine gRPC service.
@@ -43,11 +43,11 @@ type TokenHandler struct {
 // V0.3: NewTokenHandler(registry, auditStore, logger, tracer, metrics) — 5 args.
 // All parameters are required and must not be nil.
 func NewTokenHandler(
-	registry   registry.TenantRegistry,
+	registry registry.TenantRegistry,
 	auditStore audit.Store,
-	logger     observability.Logger,
-	tracer     observability.Tracer,
-	metrics    observability.Metrics,
+	logger observability.Logger,
+	tracer observability.Tracer,
+	metrics observability.Metrics,
 ) *TokenHandler {
 	return &TokenHandler{
 		registry:   registry,

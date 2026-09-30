@@ -71,7 +71,7 @@ func WithUnaryInterceptor(i grpc.UnaryClientInterceptor) Option {
 
 // client is the concrete Client implementation.
 type client struct {
-	conn *grpc.ClientConn          // nil when created via NewClientFromStub
+	conn *grpc.ClientConn // nil when created via NewClientFromStub
 	stub tokenv1.TokenEngineClient
 }
 
