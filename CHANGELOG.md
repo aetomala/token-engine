@@ -21,6 +21,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `codes.InvalidArgument` naming the field, instead of `codes.Internal`. Rejected revocation requests no
   longer reach the audit store or jwtauth. Dashboards and alerts that counted these as server errors will
   see them move to `InvalidArgument` ([#158](https://github.com/aetomala/token-engine/issues/158))
+- `MapLibraryError` now maps jwtauth sentinels that previously fell through to `codes.Internal`: empty user ID
+  or audience (`tokens.ErrInvalidUserID`, `storage.ErrInvalidUserID`, `storage.ErrInvalidAudience`) →
+  `InvalidArgument`; a token or key manager that is not running (`tokens.ErrManagerNotRunning`,
+  `keys.ErrManagerNotRunning`) → `Unavailable`; an expired refresh token reported by a custom store
+  (`tokens.ErrRefreshTokenExpired`) → `Unauthenticated`. `tokens.ErrInvalidRefreshToken` deliberately stays
+  `Internal` until jwtauth distinguishes not-found, expired, and store failures
+  ([#159](https://github.com/aetomala/token-engine/issues/159))
 
 ### Chore
 
