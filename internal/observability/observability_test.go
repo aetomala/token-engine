@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aetomala/jwtauth/pkg/keys"
@@ -426,6 +427,23 @@ var _ = Describe("MapLibraryError", func() {
 				Expect(st.Code()).To(Equal(codes.Unauthenticated))
 			})
 		})
+
+		DescribeTable("maps sentinels wrapped with %w (issue #159)",
+			func(sentinel error, expected codes.Code) {
+				err := obs.MapLibraryError(fmt.Errorf("library call failed: %w", sentinel))
+				Expect(err).NotTo(BeNil())
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(expected))
+			},
+			Entry("tokens.ErrInvalidUserID → InvalidArgument", tokens.ErrInvalidUserID, codes.InvalidArgument),
+			Entry("storage.ErrInvalidUserID → InvalidArgument", storage.ErrInvalidUserID, codes.InvalidArgument),
+			Entry("storage.ErrInvalidAudience → InvalidArgument", storage.ErrInvalidAudience, codes.InvalidArgument),
+			Entry("tokens.ErrManagerNotRunning → Unavailable", tokens.ErrManagerNotRunning, codes.Unavailable),
+			Entry("keys.ErrManagerNotRunning → Unavailable", keys.ErrManagerNotRunning, codes.Unavailable),
+			Entry("tokens.ErrRefreshTokenExpired → Unauthenticated", tokens.ErrRefreshTokenExpired, codes.Unauthenticated),
+			Entry("tokens.ErrInvalidRefreshToken stays Internal until aetomala/jwtauth#286", tokens.ErrInvalidRefreshToken, codes.Internal),
+		)
 
 		Context("unknown error", func() {
 			It("maps unknown errors to codes.Internal", func() {

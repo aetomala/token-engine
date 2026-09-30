@@ -46,6 +46,29 @@ grep -r 'ErrToken\|ErrKey\|ErrInvalid' $(go env GOPATH)/pkg/mod/github.com/aetom
 
 Any sentinel present in `./internal` but absent in the library source must be updated before the upgrade is applied. Pay particular attention to `ErrTokenExpired`, `ErrTokenRevoked`, `ErrTokenNotFound`, and `ErrKeyNotFound`.
 
+### Review new sentinels against `MapLibraryError`
+
+`observability.MapLibraryError` (`internal/observability/errors.go`) converts jwtauth sentinels into gRPC status codes. Any sentinel it does not recognize becomes `codes.Internal`, so a sentinel added in the target version silently reports as a server error until it is mapped. On every upgrade, list the exported sentinels in `pkg/tokens`, `pkg/storage`, and `pkg/keys` that were added or removed between the current and target versions:
+
+```bash
+sentinels() {
+  dir=$(go env GOPATH)/pkg/mod/github.com/aetomala/jwtauth@$1
+  for p in tokens storage keys; do
+    grep -hoE '^\s+Err[A-Za-z]+ +=' "$dir/pkg/$p"/*.go --exclude='*_test.go' | awk -v p="$p" '{print p"."$1}'
+  done | sort -u
+}
+go mod download github.com/aetomala/jwtauth@<current-version> github.com/aetomala/jwtauth@<target-version>
+diff <(sentinels <current-version>) <(sentinels <target-version>)
+```
+
+Then list the target version's sentinels that `MapLibraryError` does not reference (lines starting with `<`):
+
+```bash
+diff <(sentinels <target-version>) <(grep -oE '(tokens|storage|keys)\.Err[A-Za-z]+' internal/observability/errors.go | sort -u)
+```
+
+For every new sentinel that an RPC path can return, either add a deliberate mapping in `MapLibraryError` with a spec, or record why it stays `codes.Internal` — as `tokens.ErrInvalidRefreshToken` does, see aetomala/jwtauth#286. Sentinels that only arise at construction time (for example `keys.ErrInvalidKeyDirectory`, `storage.ErrNilClient`) never reach an RPC and need no mapping.
+
 ## 4. Prometheus Metric Rename/Removal Check
 
 Metric renames break dashboards and alerts silently — the old metric stops appearing rather than causing an error. Reference the library changelog for metric changes.

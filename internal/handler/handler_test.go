@@ -194,8 +194,8 @@ var _ = Describe("TokenHandler", func() {
 				_, err := h.IssueToken(ctx, req)
 
 				Expect(err).NotTo(BeNil())
-				// ErrManagerNotRunning is not a mapped sentinel → codes.Internal
-				Expect(status.Code(err)).To(Equal(codes.Internal))
+				// keys.ErrManagerNotRunning (wrapped by the library) maps to codes.Unavailable — issue #159
+				Expect(status.Code(err)).To(Equal(codes.Unavailable))
 			})
 		})
 	})
