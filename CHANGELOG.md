@@ -16,6 +16,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   key reaches the handler instead of receiving `codes.Aborted`, and an empty `tenant_id` is rejected with
   `codes.InvalidArgument` on every attempt. The `"default"` tenant fallback in idempotency keys is removed.
   See ADR-016 ([#154](https://github.com/aetomala/token-engine/issues/154))
+- `RefreshToken`, `RevokeToken`, `RevokeAllUserTokens`, `RevokeAllForAudience`, and
+  `RevokeAllForUserAndAudience` now reject an empty `refresh_token`, `user_id`, or `audience` with
+  `codes.InvalidArgument` naming the field, instead of `codes.Internal`. Rejected revocation requests no
+  longer reach the audit store or jwtauth. Dashboards and alerts that counted these as server errors will
+  see them move to `InvalidArgument` ([#158](https://github.com/aetomala/token-engine/issues/158))
 
 ### Chore
 
