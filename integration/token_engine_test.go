@@ -98,8 +98,8 @@ var _ = BeforeSuite(func() {
 			correlationInterceptor,
 			authInterceptor,
 			callerAuthInterceptor,
-			idempotencyInterceptor,
 			validationInterceptor,
+			idempotencyInterceptor,
 		),
 	)
 	tokenHandler := handler.NewTokenHandler(tenantReg, audit.NewNoOpAuditStore(), logger, tracer, metrics)
@@ -536,6 +536,57 @@ var _ = Describe("TokenEngine", func() {
 					IdempotencyKey: "idem-field-key-different",
 				})
 				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			})
+		})
+
+		Context("when tenant_id is empty and an idempotency key is set (issue #154 / ADR-016)", func() {
+			It("returns codes.InvalidArgument on the first attempt and on a same-key retry — no claim is left behind", func() {
+				idempKey := "idem-empty-tenant-key"
+
+				for attempt := 0; attempt < 2; attempt++ {
+					attemptCtx, attemptCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					attemptCtx = metadata.AppendToOutgoingContext(attemptCtx,
+						"x-api-key", "test-api-key",
+						observability.MetadataKeyIdempotencyKey, idempKey,
+					)
+					_, err := client.IssueToken(attemptCtx, &tokenv1.IssueTokenRequest{
+						Sub: "user-empty-tenant",
+					})
+					attemptCancel()
+					Expect(status.Code(err)).To(Equal(codes.InvalidArgument), "attempt %d", attempt+1)
+				}
+			})
+		})
+
+		Context("when an invalid request is corrected and retried with the same key (issue #154 / ADR-016)", func() {
+			It("succeeds on the corrected retry instead of returning codes.Aborted", func() {
+				idempKey := "idem-corrected-retry-key"
+
+				ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel1()
+				ctx1 = metadata.AppendToOutgoingContext(ctx1,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				_, err := client.IssueToken(ctx1, &tokenv1.IssueTokenRequest{
+					Sub:      "user-corrected-retry",
+					TenantId: "test-issuer",
+					Claims:   map[string]string{"exp": "1"},
+				})
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+				ctx2 = metadata.AppendToOutgoingContext(ctx2,
+					"x-api-key", "test-api-key",
+					observability.MetadataKeyIdempotencyKey, idempKey,
+				)
+				resp, err := client.IssueToken(ctx2, &tokenv1.IssueTokenRequest{
+					Sub:      "user-corrected-retry",
+					TenantId: "test-issuer",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.AccessToken).NotTo(BeEmpty())
 			})
 		})
 

@@ -269,7 +269,7 @@ func main() {
 	}()
 
 	// ===== Interceptors =====
-	// Order: otelgrpc → correlation → auth → caller authorization → idempotency → validation
+	// Order: otelgrpc → correlation → auth → caller authorization → validation → idempotency (ADR-016)
 	correlationInterceptor := observability.NewCorrelationInterceptor(logger, metrics)
 	authInterceptor := interceptor.NewAuthInterceptor(auth, logger)
 	callerAuthInterceptor := interceptor.NewCallerAuthorizationInterceptor(callerReg, logger)
@@ -283,8 +283,8 @@ func main() {
 			correlationInterceptor,
 			authInterceptor,
 			callerAuthInterceptor,
-			idempotencyInterceptor,
 			validationInterceptor,
+			idempotencyInterceptor,
 		),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionAge:      cfg.MaxConnectionAge,

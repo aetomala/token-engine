@@ -269,8 +269,8 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 				observability.NewCorrelationInterceptor(logger, metrics),
 				interceptor.NewAuthInterceptor(auth, logger),
 				interceptor.NewCallerAuthorizationInterceptor(callerReg, logger),
-				interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics),
 				interceptor.NewValidationInterceptor(logger),
+				interceptor.NewIdempotencyInterceptor(idempStore, logger, metrics),
 			),
 		)
 		tokenv1.RegisterTokenEngineServer(leakServer, handler.NewTokenHandler(tenantReg, auditStore, logger, tracer, metrics))

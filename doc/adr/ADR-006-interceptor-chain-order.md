@@ -1,6 +1,6 @@
 # ADR-006: Interceptor Chain Order
 
-**Status:** Accepted  
+**Status:** Amended by [ADR-016](ADR-016-validation-before-idempotency.md)  
 **Date:** 2026-05-26
 
 ## Context
@@ -16,9 +16,13 @@ The chain runs in this order:
 2. Correlation ID + request count and duration metrics
 3. Authentication
 4. Caller authorization
-5. Idempotency (IssueToken and RefreshToken)
-6. Validation
+5. Validation
+6. Idempotency (IssueToken and RefreshToken)
 ```
+
+> **Amended by [ADR-016](ADR-016-validation-before-idempotency.md) (v1.2.2):** validation now runs
+> before idempotency. The original order placed idempotency fifth and validation sixth. The two
+> rationale paragraphs below marked *Superseded* are kept for history.
 
 ## Rationale
 
@@ -30,9 +34,13 @@ The chain runs in this order:
 
 **Authorization before idempotency:** Checking the idempotency store for an unauthorized caller is wasted work and could leak information about whether a previous request with that key was successful. Authorization gates access to the idempotency store.
 
-**Idempotency before validation:** A duplicate `IssueToken` or `RefreshToken` request (same idempotency key within TTL) should return the cached response immediately, before field validation runs. Validation is not needed for a request that will return an already-computed result.
+**Idempotency before validation (Superseded by ADR-016):** A duplicate `IssueToken` or `RefreshToken` request (same idempotency key within TTL) should return the cached response immediately, before field validation runs. Validation is not needed for a request that will return an already-computed result.
 
-**Validation last:** Only requests that have passed identity checks and idempotency deduplication reach the validation step. This minimizes unnecessary parsing work and keeps the validation interceptor focused purely on business logic preconditions.
+**Validation last (Superseded by ADR-016):** Only requests that have passed identity checks and idempotency deduplication reach the validation step. This minimizes unnecessary parsing work and keeps the validation interceptor focused purely on business logic preconditions.
+
+*This premise assumed idempotency was a read-only cache check. ADR-012 made it a write (a pending
+claim before the handler runs), so a request that failed validation left a claim behind. ADR-016
+moves validation ahead of idempotency; see it for the current rationale.*
 
 ## Consequences
 
@@ -40,7 +48,7 @@ The chain runs in this order:
 - Unauthorized requests are rejected before any store access or business logic.
 - All log lines for a request share a correlation ID, including auth failure lines.
 - All request work appears under a single trace span.
-- Duplicate requests return immediately without hitting the handler.
+- Duplicate requests return without hitting the handler.
 
 **Negative:**
 - OTel interceptor runs even for requests that fail authentication — a small overhead. This is intentional: failed auth requests are worth tracing for security monitoring.
@@ -50,3 +58,4 @@ The chain runs in this order:
 - [internal/interceptor/](../../internal/interceptor/)
 - [cmd/token-engine/main.go](../../cmd/token-engine/main.go) — chain assembly
 - [ARCHITECTURE.md — Interceptor Chain](../ARCHITECTURE.md#interceptor-chain)
+- [ADR-016](ADR-016-validation-before-idempotency.md) — validation before idempotency

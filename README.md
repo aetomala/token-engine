@@ -21,7 +21,7 @@ A production-grade gRPC service that wraps [jwtauth](https://github.com/aetomala
 | `RevokeAllForUserAndAudience` | Revoke all tokens for a user within a specific audience |
 
 **Interceptor chain (applied to every RPC):**
-OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN) → Caller authorization → Idempotency → Request validation
+OpenTelemetry tracing → Correlation ID → Authentication (API key or mTLS CN) → Caller authorization → Request validation → Idempotency
 
 **Observability:** Prometheus metrics at `/metrics`, OpenTelemetry traces via OTLP, structured slog logging with correlation IDs, health probes at `/healthz/live` and `/healthz/ready`.
 
