@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	TOKEN_ENGINE_ADDR=localhost:9090 TOKEN_ENGINE_STATIC_KEY=my-key go run ./examples/grpc-client
+//	cd examples/grpc-client && TOKEN_ENGINE_ADDR=localhost:9090 TOKEN_ENGINE_STATIC_KEY=my-key go run .
 package main
 
 import (

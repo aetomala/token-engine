@@ -63,12 +63,8 @@ jobs:
       - name: Build
         run: go build ./...
 
-      - name: Build examples
-        run: |
-          for d in examples/grpc-client examples/mtls-client examples/custom-claims examples/multi-tenant; do
-            echo "==> $d"
-            (cd "$d" && go build ./...)
-          done
+      - name: Build and format-check examples
+        run: make examples-build examples-fmt-check
 
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
