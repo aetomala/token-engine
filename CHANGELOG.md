@@ -45,6 +45,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   specs or re-reporting an earlier spec's leak; the RevokeToken spec asserts the audit record's `token_ref` equals the
   revoked token's digest; phases are numbered sequentially ([#161](https://github.com/aetomala/token-engine/issues/161))
 
+### Documentation
+
+- Corrected ADR-011: cursor persistence was removed in v1.1.0, not a nonexistent v1.0.1; recorded the
+  `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` removal and #117; fixed stale file and section references; added the
+  decision date ([#153](https://github.com/aetomala/token-engine/issues/153))
+
 ## [v1.2.1] — 2026-09-25
 
 ### Security
