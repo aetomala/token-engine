@@ -1,7 +1,7 @@
 # ADR-011: Cursor-Based Reconciler
 
-**Status:** Complete — v0.6.0
-**Date:** —
+**Status:** Complete — v0.6.0 (scope narrowed in v1.1.0 — see Outcome)
+**Date:** 2026-06-03
 
 ## Context
 
@@ -76,13 +76,23 @@ support it — idempotency keys are derived from tenant, method, and a caller-su
 the resulting token.
 
 The shipped implementation retained the `CursorReconciler` name for historical continuity, but
-the cursor persistence (items 1 and 4) was removed in v1.0.1 once it was confirmed to serve no
+the cursor persistence (items 1 and 4) was removed in v1.1.0 (milestone #5, post-1.0 cleanup,
+folded into the v1.1.0 release — no v1.0.1 tag exists) once it was confirmed to serve no
 purpose without per-token work to resume — `CleanupExpiredTokens` is a self-contained
 full-namespace scan independent of any pagination cursor, so re-running it once per page (the
 original bug: issue #97) provided no benefit and added Redis load proportional to page count.
+`TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` was removed at the same time; the env var is no longer
+read.
+
+Per-token orphan detection (item 2) remains unbuilt and is tracked in #117. ADR-012's versioned
+idempotency record envelope reserves room for the token reference that work would need.
 
 ## References
 
 - `internal/reconciliation/reconciler.go` — `Reconciler` interface
-- `internal/reconciliation/lock.go` — distributed lock implementation (v0.6)
-- `doc/ARCHITECTURE.md` — Roadmap, Interface Seams section
+- `internal/reconciliation/cursor_reconciler.go` — `CursorReconciler` implementation
+- `internal/lock/lock.go` — distributed lock implementation (v0.6); see [ADR-009](ADR-009-distributed-lock.md)
+- [ADR-012](ADR-012-idempotency-concurrency-claim.md) — versioned idempotency record envelope that #117 would extend
+- `doc/ARCHITECTURE.md` — Roadmap; Interface Seams and Implementation Status
+- Issue #97 — per-page `CleanupExpiredTokens` re-run that led to removing the cursor
+- Issue #117 — per-token orphan detection
