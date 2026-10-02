@@ -28,6 +28,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`tokens.ErrRefreshTokenExpired`) → `Unauthenticated`. `tokens.ErrInvalidRefreshToken` deliberately stays
   `Internal` until jwtauth distinguishes not-found, expired, and store failures
   ([#159](https://github.com/aetomala/token-engine/issues/159))
+- jwtauth log lines forwarded through `LibraryLoggerAdapter` now carry the request's `correlation_id` and no
+  longer include a `"!BADKEY"` field. The adapter uses the context jwtauth passes as the first key-value
+  element as the logging context instead of forwarding it as a field
+  ([#160](https://github.com/aetomala/token-engine/issues/160))
 
 ### Chore
 
