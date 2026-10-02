@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -365,6 +366,36 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 			trackPair(second)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(second.AccessToken).To(Equal(first.AccessToken))
+		})
+	})
+
+	// ===== PHASE 3: Library Log Context =====
+	Describe("Phase 3: Library log context", func() {
+		It("forwards jwtauth log lines with the request's correlation_id and no !BADKEY field (issue #160)", func() {
+			const corrID = "leak-corr-160"
+
+			// ===== STEP 1: Issue a token under a known correlation ID =====
+			ctx, cancel := leakCtx(observability.MetadataKeyCorrelationID, corrID)
+			defer cancel()
+			resp, err := leakClient.IssueToken(ctx, &tokenv1.IssueTokenRequest{Sub: "leak-user-corr", TenantId: leakTenant})
+			trackPair(resp)
+			Expect(err).NotTo(HaveOccurred())
+
+			// ===== STEP 2: Find jwtauth's IssueTokenPairWithClaims line for this request =====
+			var libraryLine map[string]interface{}
+			for _, line := range strings.Split(logBuf.String(), "\n") {
+				Expect(line).NotTo(ContainSubstring("!BADKEY"), "log line carries a value without a key: %s", line)
+				var entry map[string]interface{}
+				if json.Unmarshal([]byte(line), &entry) != nil {
+					continue
+				}
+				if entry["msg"] == "token pair with claims issued" && entry["correlation_id"] == corrID {
+					libraryLine = entry
+				}
+			}
+
+			// ===== STEP 3: Assert the library line was correlated =====
+			Expect(libraryLine).NotTo(BeNil(), "no jwtauth \"token pair with claims issued\" line carries correlation_id %q", corrID)
 		})
 	})
 

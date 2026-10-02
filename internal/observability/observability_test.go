@@ -162,8 +162,23 @@ var _ = Describe("LibraryLoggerAdapter", func() {
 			})
 		})
 
-		Context("context discard", func() {
-			It("delegates to service Logger with empty ctx — correlation ID not propagated", func() {
+		Context("leading context (issue #160)", func() {
+			It("logs with the library's context — correlation_id populated, no !BADKEY field, other fields intact", func() {
+				ctxWithID := obs.WithCorrelationID(ctx, "corr-160")
+
+				adapter.Info("refresh token issued", ctxWithID, "userID", "user-1")
+
+				var logEntry map[string]interface{}
+				Expect(json.Unmarshal(buf.Bytes(), &logEntry)).To(Succeed())
+				Expect(logEntry["correlation_id"]).To(Equal("corr-160"))
+				Expect(logEntry).NotTo(HaveKey("!BADKEY"))
+				Expect(logEntry["userID"]).To(Equal("user-1"))
+				Expect(logEntry["msg"]).To(Equal("refresh token issued"))
+			})
+		})
+
+		Context("without a leading context", func() {
+			It("behaves as before — logs with context.Background() and an empty correlation_id", func() {
 				ctxWithID := obs.WithCorrelationID(ctx, "should-not-appear")
 
 				adapter.Info("test message")

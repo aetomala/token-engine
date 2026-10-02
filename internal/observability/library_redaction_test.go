@@ -50,13 +50,17 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 	// ===== PHASE 3: Core Operations =====
 	Describe("Phase 3: Core Operations", func() {
 		Context("when the library passes a leading context", func() {
-			It("redacts deny-listed values at odd key positions and keeps the context in place", func() {
+			It("uses it as the logging context, removes it from the fields, and redacts deny-listed values (issue #160)", func() {
+				var gotCtx context.Context
 				var got []interface{}
-				captureInfo("refresh token issued", &got)
+				mockLogger.EXPECT().Info(gomock.Any(), "refresh token issued", gomock.Any()).Do(
+					func(c context.Context, _ string, kv ...interface{}) { gotCtx = c; got = kv })
 
 				sut.Info("refresh token issued", ctx, "userID", "user-1", "token", secretValue)
 
-				Expect(got).To(Equal([]interface{}{ctx, "userID", "user-1", "token", redacted}))
+				Expect(gotCtx).To(BeIdenticalTo(ctx))
+
+				Expect(got).To(Equal([]interface{}{"userID", "user-1", "token", redacted}))
 			})
 
 			It("treats a value equal to a deny-listed key name as a value, not a key", func() {
@@ -65,16 +69,20 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 				sut.Info("m", ctx, "reason", "token", "userID", "user-1")
 
-				Expect(got).To(Equal([]interface{}{ctx, "reason", "token", "userID", "user-1"}))
+				Expect(got).To(Equal([]interface{}{"reason", "token", "userID", "user-1"}))
 			})
 		})
 
 		Context("when the library passes no context", func() {
-			It("redacts deny-listed values at even key positions", func() {
+			It("logs with context.Background() and redacts deny-listed values at even key positions", func() {
+				var gotCtx context.Context
 				var got []interface{}
-				captureInfo("m", &got)
+				mockLogger.EXPECT().Info(gomock.Any(), "m", gomock.Any()).Do(
+					func(c context.Context, _ string, kv ...interface{}) { gotCtx = c; got = kv })
 
 				sut.Info("m", "token", secretValue, "userID", "user-1")
+
+				Expect(gotCtx).To(Equal(context.Background()))
 
 				Expect(got).To(Equal([]interface{}{"token", redacted, "userID", "user-1"}))
 			})
@@ -87,7 +95,7 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 				sut.Info("m", ctx, key, value)
 
-				Expect(got).To(Equal([]interface{}{ctx, key, redacted}))
+				Expect(got).To(Equal([]interface{}{key, redacted}))
 			},
 			Entry("token with a string value", "token", secretValue),
 			Entry("key with a string value", "key", "refresh_token:"+secretValue),
@@ -103,7 +111,7 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 				sut.Info("m", ctx, key, "some-value")
 
-				Expect(got).To(Equal([]interface{}{ctx, key, "some-value"}))
+				Expect(got).To(Equal([]interface{}{key, "some-value"}))
 			},
 			Entry("tokenID — carries only a jti from jwtauth v1.1.1", "tokenID"),
 			Entry("token_id — carries only a jti from jwtauth v1.1.1", "token_id"),
@@ -118,7 +126,7 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 				call(sut, ctx, "token", secretValue)
 
-				Expect(got).To(Equal([]interface{}{ctx, "token", redacted}))
+				Expect(got).To(Equal([]interface{}{"token", redacted}))
 			},
 			Entry("Debug",
 				func(a *obs.LibraryLoggerAdapter, kv ...interface{}) { a.Debug("m", kv...) },
@@ -160,7 +168,21 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 				// ===== STEP 3: Assert both bound and per-call values are redacted =====
 				Expect(bound).To(Equal([]interface{}{"tenant", "t-1", "token", redacted}))
-				Expect(got).To(Equal([]interface{}{ctx, "cursor", redacted}))
+				Expect(got).To(Equal([]interface{}{"cursor", redacted}))
+			})
+		})
+
+		Context("With a leading context (issue #160)", func() {
+			It("discards the context and binds only the fields that follow it", func() {
+				var bound []interface{}
+				mockLogger.EXPECT().With(gomock.Any()).DoAndReturn(func(kv ...interface{}) obs.Logger {
+					bound = kv
+					return mockLogger
+				})
+
+				sut.With(ctx, "tenant", "t-1", "token", secretValue)
+
+				Expect(bound).To(Equal([]interface{}{"tenant", "t-1", "token", redacted}))
 			})
 		})
 
@@ -173,7 +195,18 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 				sut.Info("m", args...)
 
 				Expect(args).To(Equal([]interface{}{ctx, "token", secretValue, "key", secretValue}))
-				Expect(got).To(Equal([]interface{}{ctx, "token", redacted, "key", redacted}))
+				Expect(got).To(Equal([]interface{}{"token", redacted, "key", redacted}))
+			})
+
+			It("keeps its leading context when nothing is redacted (issue #160)", func() {
+				args := []interface{}{ctx, "userID", "user-1"}
+				var got []interface{}
+				captureInfo("m", &got)
+
+				sut.Info("m", args...)
+
+				Expect(args).To(Equal([]interface{}{ctx, "userID", "user-1"}))
+				Expect(got).To(Equal([]interface{}{"userID", "user-1"}))
 			})
 
 			It("is not modified by With", func() {
@@ -189,18 +222,18 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 	// ===== PHASE 6: Edge Cases =====
 	Describe("Phase 6: Edge Cases", func() {
-		DescribeTable("odd-length argument lists do not panic and forward every element in order",
-			func(args ...interface{}) {
+		DescribeTable("odd-length argument lists do not panic and forward every field in order",
+			func(wantLen int, args ...interface{}) {
 				var got []interface{}
 				captureInfo("m", &got)
 
 				Expect(func() { sut.Info("m", args...) }).NotTo(Panic())
 
-				Expect(got).To(HaveLen(len(args)))
+				Expect(got).To(HaveLen(wantLen))
 			},
-			Entry("trailing deny-listed key without a value, no context", "token"),
-			Entry("pair followed by a trailing deny-listed key, no context", "userID", "u", "token"),
-			Entry("context followed by a trailing deny-listed key", context.Background(), "token"),
+			Entry("trailing deny-listed key without a value, no context", 1, "token"),
+			Entry("pair followed by a trailing deny-listed key, no context", 3, "userID", "u", "token"),
+			Entry("context followed by a trailing deny-listed key — context removed", 1, context.Background(), "token"),
 		)
 
 		It("forwards an empty argument list unchanged", func() {
@@ -218,7 +251,7 @@ var _ = Describe("LibraryLoggerAdapter — credential redaction", func() {
 
 			sut.Info("m", ctx, "token", secretValue, "key")
 
-			Expect(got).To(Equal([]interface{}{ctx, "token", redacted, "key"}))
+			Expect(got).To(Equal([]interface{}{"token", redacted, "key"}))
 		})
 	})
 })
