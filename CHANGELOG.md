@@ -41,6 +41,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GO-2026-6505 (exporter config logging may leak endpoint URLs in info logs). `otelgrpc` stays pinned at
   v0.52.0 — newer OpenTelemetry releases require an `otelgrpc` that removes `UnaryServerInterceptor`; that
   migration is tracked with #162 ([#169](https://github.com/aetomala/token-engine/issues/169))
+- Tightened the credential leak-regression suite: a leak now fails every affected spec in one run, without skipping later
+  specs or re-reporting an earlier spec's leak; the RevokeToken spec asserts the audit record's `token_ref` equals the
+  revoked token's digest; phases are numbered sequentially ([#161](https://github.com/aetomala/token-engine/issues/161))
 
 ## [v1.2.1] — 2026-09-25
 

@@ -33,6 +33,7 @@ import (
 	"github.com/aetomala/token-engine/internal/observability"
 	"github.com/aetomala/token-engine/internal/registry"
 	"github.com/aetomala/token-engine/internal/store"
+	"github.com/aetomala/token-engine/internal/tokenref"
 )
 
 // leakWindow is the fragment length used to detect partial credential leaks.
@@ -56,6 +57,20 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+// Len returns the number of bytes written so far. Safe for concurrent use.
+func (b *syncBuffer) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Len()
+}
+
+// Since returns a snapshot of the contents written after offset bytes. Safe for concurrent use.
+func (b *syncBuffer) Since(offset int) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()[offset:]
 }
 
 // secretTracker records credentials and detects any 12-character fragment of them in recorded output.
@@ -142,11 +157,18 @@ func (r *errorRecorder) interceptor() grpc.UnaryClientInterceptor {
 	}
 }
 
-// snapshot returns a copy of the recorded error messages.
-func (r *errorRecorder) snapshot() []string {
+// len returns the number of error messages recorded so far.
+func (r *errorRecorder) len() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]string(nil), r.messages...)
+	return len(r.messages)
+}
+
+// since returns a copy of the error messages recorded after the first i.
+func (r *errorRecorder) since(i int) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.messages[i:]...)
 }
 
 // spanStrings flattens every recordable string of a span — name, attributes, events, status.
@@ -173,7 +195,10 @@ func randomGarbageToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-var _ = Describe("Credential leak regression", Ordered, func() {
+// Ordered shares one server across specs; ContinueOnFailure keeps a failing spec from skipping the
+// rest, and each spec's AfterEach scans only the output recorded during that spec, so a leak is
+// reported by exactly the specs that produced it.
+var _ = Describe("Credential leak regression", Ordered, ContinueOnFailure, func() {
 	const (
 		leakTenant = "leak-issuer"
 		leakAPIKey = "leak-api-key"
@@ -190,6 +215,8 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 		logBuf       *syncBuffer
 		secrets      *secretTracker
 		grpcErrors   *errorRecorder
+		logStart     int // logBuf offset at the start of the current spec
+		errStart     int // grpcErrors count at the start of the current spec
 	)
 
 	// leakCtx returns a context carrying the leak-suite API key and optional extra metadata pairs.
@@ -308,9 +335,19 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 		}
 	})
 
+	BeforeEach(func() {
+		// ===== Open this spec's scan window =====
+		logStart = logBuf.Len()
+		errStart = grpcErrors.len()
+		spanExporter.Reset()
+	})
+
 	AfterEach(func() {
+		// Every scan covers only output recorded during this spec. The secret tracker stays
+		// cumulative, so a spec that emits an earlier spec's credential is still caught.
+
 		// ===== STEP 1: Log stream =====
-		for _, line := range strings.Split(logBuf.String(), "\n") {
+		for _, line := range strings.Split(logBuf.Since(logStart), "\n") {
 			if frag, secret, found := secrets.find(line); found {
 				Fail(fmt.Sprintf("log line leaks a credential fragment\n  fragment: %q\n  secret:   %q\n  recorded: %s", frag, secret, line))
 			}
@@ -326,15 +363,15 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 		}
 
 		// ===== STEP 3: gRPC error messages returned to the client =====
-		for _, msg := range grpcErrors.snapshot() {
+		for _, msg := range grpcErrors.since(errStart) {
 			if frag, secret, found := secrets.find(msg); found {
 				Fail(fmt.Sprintf("gRPC error message leaks a credential fragment\n  fragment: %q\n  secret:   %q\n  recorded: %s", frag, secret, msg))
 			}
 		}
 	})
 
-	// ===== PHASE 3: IssueToken =====
-	Describe("Phase 3: IssueToken", func() {
+	// ===== PHASE 1: IssueToken =====
+	Describe("Phase 1: IssueToken", func() {
 		It("does not leak tokens issued with audiences and custom claims", func() {
 			ctx, cancel := leakCtx()
 			defer cancel()
@@ -369,38 +406,8 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 		})
 	})
 
-	// ===== PHASE 3: Library Log Context =====
-	Describe("Phase 3: Library log context", func() {
-		It("forwards jwtauth log lines with the request's correlation_id and no !BADKEY field (issue #160)", func() {
-			const corrID = "leak-corr-160"
-
-			// ===== STEP 1: Issue a token under a known correlation ID =====
-			ctx, cancel := leakCtx(observability.MetadataKeyCorrelationID, corrID)
-			defer cancel()
-			resp, err := leakClient.IssueToken(ctx, &tokenv1.IssueTokenRequest{Sub: "leak-user-corr", TenantId: leakTenant})
-			trackPair(resp)
-			Expect(err).NotTo(HaveOccurred())
-
-			// ===== STEP 2: Find jwtauth's IssueTokenPairWithClaims line for this request =====
-			var libraryLine map[string]interface{}
-			for _, line := range strings.Split(logBuf.String(), "\n") {
-				Expect(line).NotTo(ContainSubstring("!BADKEY"), "log line carries a value without a key: %s", line)
-				var entry map[string]interface{}
-				if json.Unmarshal([]byte(line), &entry) != nil {
-					continue
-				}
-				if entry["msg"] == "token pair with claims issued" && entry["correlation_id"] == corrID {
-					libraryLine = entry
-				}
-			}
-
-			// ===== STEP 3: Assert the library line was correlated =====
-			Expect(libraryLine).NotTo(BeNil(), "no jwtauth \"token pair with claims issued\" line carries correlation_id %q", corrID)
-		})
-	})
-
-	// ===== PHASE 3: RefreshToken =====
-	Describe("Phase 3: RefreshToken", func() {
+	// ===== PHASE 2: RefreshToken =====
+	Describe("Phase 2: RefreshToken", func() {
 		It("does not leak the presented or rotated tokens on success", func() {
 			issued := issue("leak-user-refresh")
 
@@ -468,7 +475,21 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 			})
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.Contains(logBuf.String(), `"token_ref"`)).To(BeTrue(), "audit record should carry token_ref")
+
+			// ===== Assert the audit record carries the revoked token's digest =====
+			var refs []interface{}
+			for _, line := range strings.Split(logBuf.Since(logStart), "\n") {
+				var entry map[string]interface{}
+				if json.Unmarshal([]byte(line), &entry) != nil {
+					continue
+				}
+				if entry["msg"] == "token revoked" && entry["scope"] == "token" {
+					refs = append(refs, entry["token_ref"])
+				}
+			}
+			Expect(refs).To(HaveLen(1), "expected exactly one RevokeToken audit record")
+			Expect(refs[0]).To(MatchRegexp(`^[0-9a-f]{16}$`), "token_ref must be a 16-hex-character digest")
+			Expect(refs[0]).To(Equal(tokenref.Ref(issued.RefreshToken)), "token_ref must be the revoked token's digest")
 		})
 
 		It("RevokeAllUserTokens does not leak the user's tokens", func() {
@@ -510,6 +531,36 @@ var _ = Describe("Credential leak regression", Ordered, func() {
 			})
 
 			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	// ===== PHASE 4: Library Log Context =====
+	Describe("Phase 4: Library log context", func() {
+		It("forwards jwtauth log lines with the request's correlation_id and no !BADKEY field (issue #160)", func() {
+			const corrID = "leak-corr-160"
+
+			// ===== STEP 1: Issue a token under a known correlation ID =====
+			ctx, cancel := leakCtx(observability.MetadataKeyCorrelationID, corrID)
+			defer cancel()
+			resp, err := leakClient.IssueToken(ctx, &tokenv1.IssueTokenRequest{Sub: "leak-user-corr", TenantId: leakTenant})
+			trackPair(resp)
+			Expect(err).NotTo(HaveOccurred())
+
+			// ===== STEP 2: Find jwtauth's IssueTokenPairWithClaims line for this request =====
+			var libraryLine map[string]interface{}
+			for _, line := range strings.Split(logBuf.String(), "\n") {
+				Expect(line).NotTo(ContainSubstring("!BADKEY"), "log line carries a value without a key: %s", line)
+				var entry map[string]interface{}
+				if json.Unmarshal([]byte(line), &entry) != nil {
+					continue
+				}
+				if entry["msg"] == "token pair with claims issued" && entry["correlation_id"] == corrID {
+					libraryLine = entry
+				}
+			}
+
+			// ===== STEP 3: Assert the library line was correlated =====
+			Expect(libraryLine).NotTo(BeNil(), "no jwtauth \"token pair with claims issued\" line carries correlation_id %q", corrID)
 		})
 	})
 })
