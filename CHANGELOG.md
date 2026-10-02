@@ -33,6 +33,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Enforce gofmt through golangci-lint so `make lint` and CI fail on unformatted files; reformatted
   existing drift across the repository ([#164](https://github.com/aetomala/token-engine/issues/164))
+- Bumped the OpenTelemetry modules (`otel`, `otel/sdk`, `otel/trace`, `otlptracegrpc`) to v1.45.0, closing
+  GO-2026-6505 (exporter config logging may leak endpoint URLs in info logs). `otelgrpc` stays pinned at
+  v0.52.0 — newer OpenTelemetry releases require an `otelgrpc` that removes `UnaryServerInterceptor`; that
+  migration is tracked with #162 ([#169](https://github.com/aetomala/token-engine/issues/169))
 
 ## [v1.2.1] — 2026-09-25
 
