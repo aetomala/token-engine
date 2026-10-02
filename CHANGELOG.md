@@ -44,6 +44,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Tightened the credential leak-regression suite: a leak now fails every affected spec in one run, without skipping later
   specs or re-reporting an earlier spec's leak; the RevokeToken spec asserts the audit record's `token_ref` equals the
   revoked token's digest; phases are numbered sequentially ([#161](https://github.com/aetomala/token-engine/issues/161))
+- `make examples-build`, `make examples-tidy`, and CI now discover every `examples/*/go.mod` instead of a hardcoded
+  list, so `examples/idempotency` is built and tidied; a failure in any example now fails the target (previously only
+  the last directory's result counted). Added `make examples-fmt-check` (gofmt over `examples/`, which golangci-lint
+  cannot see) to `make ci`, CI, and `run-ci-locally.sh`, and a README for `examples/idempotency`
+  ([#155](https://github.com/aetomala/token-engine/issues/155))
 
 ### Documentation
 

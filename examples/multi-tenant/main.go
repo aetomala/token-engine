@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/multi-tenant
+//	cd examples/multi-tenant && TOKEN_ENGINE_STATIC_KEY=devkey go run .
 package main
 
 import (

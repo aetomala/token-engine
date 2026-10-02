@@ -10,7 +10,7 @@
 //
 // Usage:
 //
-//	TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/custom-claims
+//	cd examples/custom-claims && TOKEN_ENGINE_STATIC_KEY=devkey go run .
 package main
 
 import (
