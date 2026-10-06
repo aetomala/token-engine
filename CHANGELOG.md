@@ -55,6 +55,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Corrected ADR-011: cursor persistence was removed in v1.1.0, not a nonexistent v1.0.1; recorded the
   `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` removal and #117; fixed stale file and section references; added the
   decision date ([#153](https://github.com/aetomala/token-engine/issues/153))
+- Removed `reconciliation:cursor:*` from the pre-upgrade runbook's backup list and replaced the rollback step that told
+  operators to verify cursor keys with a note that they are inert; no supported version writes them
+  ([#173](https://github.com/aetomala/token-engine/issues/173))
 
 ## [v1.2.1] — 2026-09-25
 

@@ -4,7 +4,7 @@
 
 Complete all items before applying a new Token Engine version to a production environment.
 
-- [ ] **Backup Redis namespace** — snapshot the Redis database or export all `token:*`, `reconciliation:cursor:*`, and `key_rotation:*` keys. Verify the backup is restorable before proceeding.
+- [ ] **Backup Redis namespace** — snapshot the Redis database or export all `token:*` and `key_rotation:*` keys. Verify the backup is restorable before proceeding.
 - [ ] **Verify cert-manager health** — if mTLS is enabled, confirm that cert-manager is running and that the serving certificate is valid and not approaching expiry. A certificate renewal failure during a rolling update will cause gRPC connection failures.
 - [ ] **Confirm single-replica deployment if pre-v0.6** — before v0.6, Token Engine must run as a single replica. Verify `kubectl get deployment token-engine -o jsonpath='{.spec.replicas}'` returns `1`. Do not scale up until v0.6 distributed lock behaviour is validated (see operator guide §11).
 - [ ] **Confirm Redis connectivity** — run `redis-cli -h $REDIS_HOST ping` from within the cluster and verify `PONG` is returned.
@@ -88,11 +88,7 @@ If a post-upgrade issue requires rollback:
 
 1. **Stop the new version** — `kubectl rollout undo deployment/token-engine` or equivalent. Wait for the old ReplicaSet to become ready.
 2. **Restart the previous version** — verify the previous image tag is running with `kubectl get pods -l app=token-engine -o jsonpath='{.items[*].spec.containers[0].image}'`.
-3. **Verify Redis cursor key consistency** — after rollback, run:
-   ```bash
-   redis-cli --scan --pattern 'reconciliation:cursor:*'
-   ```
-   Cursor keys left by the new version are safe to retain — the old version will start a fresh pass from an empty cursor if a key references a position it cannot resolve. If in doubt, delete stale cursor keys manually before restarting the old version.
+3. **Ignore leftover reconciliation cursor keys** — versions before v1.1.0 persisted a `reconciliation:cursor:{tenant_id}` key; current versions do not. If a scan of an older Redis shows any, they are inert and safe to delete. No rollback step depends on them.
 4. **Verify lock key expiry** — distributed lock keys (`locks:reconciliation:*`, `locks:key_rotation:*`) will expire automatically per their TTL. Do not delete them manually unless the TTL has already passed and you are certain no process holds the lock.
 
 ## 6. Post-Upgrade Validation
