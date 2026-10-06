@@ -54,16 +54,18 @@ Client Request
 ├─────────────────────────┤
 │ 4. Caller Authorization │  checks caller identity against allowed callers per tenant
 ├─────────────────────────┤
-│ 5. Idempotency          │  atomic claim + content-fingerprint check (hit / mismatch / conflict)
+│ 5. Validation           │  validates required request fields — before any idempotency claim
 ├─────────────────────────┤
-│ 6. Validation           │  validates required request fields
+│ 6. Idempotency          │  atomic claim + content-fingerprint check (hit / mismatch / conflict)
 └─────────────────────────┘
     │
     ▼
 Handler → jwtauth → Response
 ```
 
-See [ADR-006](adr/ADR-006-interceptor-chain-order.md) for the rationale behind this ordering.
+See [ADR-006](adr/ADR-006-interceptor-chain-order.md) for the rationale behind this ordering, as amended by
+[ADR-016](adr/ADR-016-validation-before-idempotency.md) — validation runs before idempotency so a request that
+fails validation never writes a claim.
 
 ---
 
@@ -85,6 +87,10 @@ Auth interceptor        — reads TLS peer CN [mtls] or x-api-key header [disabl
 CallerAuthz interceptor — checks caller identity against tenant's allowed callers list
   │  ← PERMISSION_DENIED if caller not authorized
   ▼
+Validation interceptor  — validates required fields before any idempotency claim [ADR-016]
+  │  ← INVALID_ARGUMENT on empty tenant_id, an empty primary identifier (sub, refresh_token,
+  │    user_id, or audience — whichever the RPC requires), or a reserved claim key
+  ▼
 Idempotency interceptor — resolves the effective key from the `x-idempotency-key` metadata header
                            and/or the deprecated `idempotency_key` request field; header and field
                            set to different values → INVALID_ARGUMENT before any store interaction
@@ -99,9 +105,6 @@ Idempotency interceptor — resolves the effective key from the `x-idempotency-k
   Note: for RefreshToken, the claim must precede the jwtauth call, since
   RefreshAccessTokenWithClaims revokes the old refresh token immediately — a retry arriving
   after the first call would otherwise hit ErrTokenRevoked.
-  ▼
-Validation interceptor  — validates required fields
-  │
   ▼
 TokenHandler / JWKSHandler  — delegates to jwtauth (tokens.TokenManager / keys.KeyManager)
   │  ← maps jwtauth errors to gRPC status codes via MapLibraryError
@@ -143,7 +146,7 @@ The `TokenHandler` depends on the `tokens.TokenManager` interface (introduced in
 
 token-engine does not implement any JWT signing, key management, or token storage logic. It provides the transport, multi-tenancy, and observability layers that jwtauth does not include by design.
 
-**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v1.1.0 source:
+**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`, matched with `errors.Is` so wrapped sentinels map the same as bare ones. Package ownership of each sentinel is verified from jwtauth v1.1.1 source. Any error not listed maps to `INTERNAL`.
 
 | Sentinel | Package | gRPC Code |
 |---|---|---|
@@ -153,6 +156,15 @@ token-engine does not implement any JWT signing, key management, or token storag
 | `ErrKeyStoreInvalidKeyID` | `pkg/keys` | `INTERNAL` |
 | `ErrTokenMissingKid` | `pkg/tokens` | `INTERNAL` |
 | `ErrTokenExpired` | `pkg/tokens` | `UNAUTHENTICATED` |
+| `ErrRefreshTokenExpired` | `pkg/tokens` | `UNAUTHENTICATED` |
+| `ErrInvalidUserID` | `pkg/tokens` | `INVALID_ARGUMENT` |
+| `ErrInvalidUserID` | `pkg/storage` | `INVALID_ARGUMENT` |
+| `ErrInvalidAudience` | `pkg/storage` | `INVALID_ARGUMENT` |
+| `ErrManagerNotRunning` | `pkg/tokens` | `UNAVAILABLE` |
+| `ErrManagerNotRunning` | `pkg/keys` | `UNAVAILABLE` |
+| `ErrInvalidRefreshToken` | `pkg/tokens` | `INTERNAL` |
+
+`tokens.ErrInvalidRefreshToken` is deliberately `INTERNAL`: on the refresh path jwtauth folds every storage error except "revoked" into it — not-found, expired, and backend failures such as a Redis outage alike — so mapping it to `UNAUTHENTICATED` would tell clients their credentials are bad during an outage. Revisit once [aetomala/jwtauth#286](https://github.com/aetomala/jwtauth/issues/286) distinguishes them. On every jwtauth upgrade, diff its exported sentinels against this table — see the [pre-upgrade runbook](pre-upgrade-runbook.md#3-error-sentinel-audit-procedure).
 
 ---
 
@@ -238,3 +250,4 @@ the current release.
 | [ADR-013](adr/ADR-013-idempotency-request-fingerprint.md) | Idempotency key bound to request content via SHA-256 fingerprint — FAILED_PRECONDITION on mismatch |
 | [ADR-014](adr/ADR-014-idempotency-key-precedence.md) | Idempotency key precedence between the request field and the metadata header — INVALID_ARGUMENT on conflict |
 | [ADR-015](adr/ADR-015-idempotency-key-field-deprecation.md) | Deprecate the `idempotency_key` request field in favor of the metadata header |
+| [ADR-016](adr/ADR-016-validation-before-idempotency.md) | Run validation before the idempotency claim — amends ADR-006's chain order |

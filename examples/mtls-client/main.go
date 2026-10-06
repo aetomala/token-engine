@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	CLIENT_CERT=client.crt CLIENT_KEY=client.key CA_CERT=ca.crt go run ./examples/mtls-client
+//	cd examples/mtls-client && CLIENT_CERT=client.crt CLIENT_KEY=client.key CA_CERT=ca.crt go run .
 //
 // If CLIENT_CERT/CLIENT_KEY/CA_CERT are not set, the example falls back to plaintext.
 package main

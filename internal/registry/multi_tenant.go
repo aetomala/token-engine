@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	librarymetrics "github.com/aetomala/jwtauth/pkg/metrics"
 	"github.com/aetomala/jwtauth/pkg/keys"
+	librarymetrics "github.com/aetomala/jwtauth/pkg/metrics"
 	"github.com/aetomala/jwtauth/pkg/storage"
 	"github.com/aetomala/jwtauth/pkg/tokens"
 	"github.com/prometheus/client_golang/prometheus"

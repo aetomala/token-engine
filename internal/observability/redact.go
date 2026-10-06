@@ -23,25 +23,30 @@ func isRedactedKey(key string) bool {
 	return ok
 }
 
-// redactKeysAndValues returns keysAndValues with the value following every deny-listed key
-// replaced by redactedValue. The jwtauth library passes the request context as the first element, so
-// pairing starts at index 1 when that element implements context.Context and at index 0
-// otherwise. No element is removed or reordered, and a trailing key without a value is left
-// as-is. The caller's slice is never mutated — a copy is made on the first redaction, and the
-// original slice is returned unchanged when nothing matches.
-func redactKeysAndValues(keysAndValues []interface{}) []interface{} {
-	// ===== STEP 1: Determine Pairing Offset =====
-	offset := 0
+// splitLeadingContext separates the request context jwtauth passes as the first key-value element
+// from the fields that follow it. The library's logging.Logger has no context parameter, so it
+// passes the context positionally — see aetomala/jwtauth#288. Returns the context and the remaining
+// elements when the first element implements context.Context, or context.Background() and
+// keysAndValues unchanged otherwise. The remaining elements are a reslice — the caller's slice is
+// never mutated.
+func splitLeadingContext(keysAndValues []interface{}) (context.Context, []interface{}) {
 	if len(keysAndValues) > 0 {
-		if _, ok := keysAndValues[0].(context.Context); ok {
-			offset = 1
+		if ctx, ok := keysAndValues[0].(context.Context); ok {
+			return ctx, keysAndValues[1:]
 		}
 	}
+	return context.Background(), keysAndValues
+}
 
-	// ===== STEP 2: Redact Deny-Listed Values =====
+// redactKeysAndValues returns keysAndValues with the value following every deny-listed key
+// replaced by redactedValue. Pairing starts at index 0 — callers strip a leading context with
+// splitLeadingContext first. No element is removed or reordered, and a trailing key without a
+// value is left as-is. The caller's slice is never mutated — a copy is made on the first
+// redaction, and the original slice is returned unchanged when nothing matches.
+func redactKeysAndValues(keysAndValues []interface{}) []interface{} {
 	out := keysAndValues
 	copied := false
-	for i := offset; i+1 < len(keysAndValues); i += 2 {
+	for i := 0; i+1 < len(keysAndValues); i += 2 {
 		key, ok := keysAndValues[i].(string)
 		if !ok || !isRedactedKey(key) {
 			continue

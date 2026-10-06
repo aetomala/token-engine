@@ -9,6 +9,67 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.2.2] — 2026-10-06
+
+### Fixed
+
+- A request that carries an idempotency key and fails validation no longer leaves a pending idempotency
+  claim behind. Validation now runs before the idempotency interceptor, so a corrected retry with the same
+  key reaches the handler instead of receiving `codes.Aborted`, and an empty `tenant_id` is rejected with
+  `codes.InvalidArgument` on every attempt. The `"default"` tenant fallback in idempotency keys is removed.
+  See ADR-016 ([#154](https://github.com/aetomala/token-engine/issues/154))
+- `RefreshToken`, `RevokeToken`, `RevokeAllUserTokens`, `RevokeAllForAudience`, and
+  `RevokeAllForUserAndAudience` now reject an empty `refresh_token`, `user_id`, or `audience` with
+  `codes.InvalidArgument` naming the field, instead of `codes.Internal`. Rejected revocation requests no
+  longer reach the audit store or jwtauth. Dashboards and alerts that counted these as server errors will
+  see them move to `InvalidArgument` ([#158](https://github.com/aetomala/token-engine/issues/158))
+- `MapLibraryError` now maps jwtauth sentinels that previously fell through to `codes.Internal`: empty user ID
+  or audience (`tokens.ErrInvalidUserID`, `storage.ErrInvalidUserID`, `storage.ErrInvalidAudience`) →
+  `InvalidArgument`; a token or key manager that is not running (`tokens.ErrManagerNotRunning`,
+  `keys.ErrManagerNotRunning`) → `Unavailable`; an expired refresh token reported by a custom store
+  (`tokens.ErrRefreshTokenExpired`) → `Unauthenticated`. `tokens.ErrInvalidRefreshToken` deliberately stays
+  `Internal` until jwtauth distinguishes not-found, expired, and store failures
+  ([#159](https://github.com/aetomala/token-engine/issues/159))
+- jwtauth log lines forwarded through `LibraryLoggerAdapter` now carry the request's `correlation_id` and no
+  longer include a `"!BADKEY"` field. The adapter uses the context jwtauth passes as the first key-value
+  element as the logging context instead of forwarding it as a field
+  ([#160](https://github.com/aetomala/token-engine/issues/160))
+
+### Chore
+
+- Enforce gofmt through golangci-lint so `make lint` and CI fail on unformatted files; reformatted
+  existing drift across the repository ([#164](https://github.com/aetomala/token-engine/issues/164))
+- Bumped the OpenTelemetry modules (`otel`, `otel/sdk`, `otel/trace`, `otlptracegrpc`) to v1.45.0, closing
+  GO-2026-6505 (exporter config logging may leak endpoint URLs in info logs). `otelgrpc` stays pinned at
+  v0.52.0 — newer OpenTelemetry releases require an `otelgrpc` that removes `UnaryServerInterceptor`; that
+  migration is tracked with #162 ([#169](https://github.com/aetomala/token-engine/issues/169))
+- Tightened the credential leak-regression suite: a leak now fails every affected spec in one run, without skipping later
+  specs or re-reporting an earlier spec's leak; the RevokeToken spec asserts the audit record's `token_ref` equals the
+  revoked token's digest; phases are numbered sequentially ([#161](https://github.com/aetomala/token-engine/issues/161))
+- `make examples-build`, `make examples-tidy`, and CI now discover every `examples/*/go.mod` instead of a hardcoded
+  list, so `examples/idempotency` is built and tidied; a failure in any example now fails the target (previously only
+  the last directory's result counted). Added `make examples-fmt-check` (gofmt over `examples/`, which golangci-lint
+  cannot see) to `make ci`, CI, and `run-ci-locally.sh`, and a README for `examples/idempotency`
+  ([#155](https://github.com/aetomala/token-engine/issues/155))
+
+### Documentation
+
+- Corrected ADR-011: cursor persistence was removed in v1.1.0, not a nonexistent v1.0.1; recorded the
+  `TOKEN_ENGINE_RECONCILIATION_PAGE_SIZE` removal and #117; fixed stale file and section references; added the
+  decision date ([#153](https://github.com/aetomala/token-engine/issues/153))
+- Removed `reconciliation:cursor:*` from the pre-upgrade runbook's backup list and replaced the rollback step that told
+  operators to verify cursor keys with a note that they are inert; no supported version writes them
+  ([#173](https://github.com/aetomala/token-engine/issues/173))
+- Corrected the pre-upgrade runbook's Redis backup step: replaced the `token:*` pattern, which matches no key, with a verified
+  key inventory (refresh-token hashes and indexes, expiry index, signing keys and metadata, idempotency records, rotation marker),
+  stated the tenant-prefix format, and warned that a backup holds refresh tokens, RSA signing keys, and idempotency token pairs
+  ([#176](https://github.com/aetomala/token-engine/issues/176))
+- Added the v1.2.1 → v1.2.2 section to `doc/MIGRATION.md` (interceptor order, empty-identifier validation, jwtauth error
+  mapping, library log correlation, OpenTelemetry fix), named the RSA signing keys in the v1.2.1 section's credential-store
+  warning, added v1.2.1 and v1.2.2 rows to the README roadmap, and brought the README Error Codes table and the
+  ARCHITECTURE.md error-mapping table (now 13 sentinels, verified against jwtauth v1.1.1) up to date
+  ([#179](https://github.com/aetomala/token-engine/issues/179))
+
 ## [v1.2.1] — 2026-09-25
 
 ### Security

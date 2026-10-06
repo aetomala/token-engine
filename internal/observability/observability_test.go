@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aetomala/jwtauth/pkg/keys"
@@ -161,8 +162,23 @@ var _ = Describe("LibraryLoggerAdapter", func() {
 			})
 		})
 
-		Context("context discard", func() {
-			It("delegates to service Logger with empty ctx — correlation ID not propagated", func() {
+		Context("leading context (issue #160)", func() {
+			It("logs with the library's context — correlation_id populated, no !BADKEY field, other fields intact", func() {
+				ctxWithID := obs.WithCorrelationID(ctx, "corr-160")
+
+				adapter.Info("refresh token issued", ctxWithID, "userID", "user-1")
+
+				var logEntry map[string]interface{}
+				Expect(json.Unmarshal(buf.Bytes(), &logEntry)).To(Succeed())
+				Expect(logEntry["correlation_id"]).To(Equal("corr-160"))
+				Expect(logEntry).NotTo(HaveKey("!BADKEY"))
+				Expect(logEntry["userID"]).To(Equal("user-1"))
+				Expect(logEntry["msg"]).To(Equal("refresh token issued"))
+			})
+		})
+
+		Context("without a leading context", func() {
+			It("behaves as before — logs with context.Background() and an empty correlation_id", func() {
 				ctxWithID := obs.WithCorrelationID(ctx, "should-not-appear")
 
 				adapter.Info("test message")
@@ -426,6 +442,23 @@ var _ = Describe("MapLibraryError", func() {
 				Expect(st.Code()).To(Equal(codes.Unauthenticated))
 			})
 		})
+
+		DescribeTable("maps sentinels wrapped with %w (issue #159)",
+			func(sentinel error, expected codes.Code) {
+				err := obs.MapLibraryError(fmt.Errorf("library call failed: %w", sentinel))
+				Expect(err).NotTo(BeNil())
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(expected))
+			},
+			Entry("tokens.ErrInvalidUserID → InvalidArgument", tokens.ErrInvalidUserID, codes.InvalidArgument),
+			Entry("storage.ErrInvalidUserID → InvalidArgument", storage.ErrInvalidUserID, codes.InvalidArgument),
+			Entry("storage.ErrInvalidAudience → InvalidArgument", storage.ErrInvalidAudience, codes.InvalidArgument),
+			Entry("tokens.ErrManagerNotRunning → Unavailable", tokens.ErrManagerNotRunning, codes.Unavailable),
+			Entry("keys.ErrManagerNotRunning → Unavailable", keys.ErrManagerNotRunning, codes.Unavailable),
+			Entry("tokens.ErrRefreshTokenExpired → Unauthenticated", tokens.ErrRefreshTokenExpired, codes.Unauthenticated),
+			Entry("tokens.ErrInvalidRefreshToken stays Internal until aetomala/jwtauth#286", tokens.ErrInvalidRefreshToken, codes.Internal),
+		)
 
 		Context("unknown error", func() {
 			It("maps unknown errors to codes.Internal", func() {

@@ -2,11 +2,11 @@
 //
 // Prerequisites:
 //   - Two token-engine servers running — see docker-compose.yaml in this directory:
-//       docker compose up   # or: podman compose up
+//     docker compose up   # or: podman compose up
 //
 // Usage:
 //
-//	TOKEN_ENGINE_STATIC_KEY=devkey go run ./examples/multi-tenant
+//	cd examples/multi-tenant && TOKEN_ENGINE_STATIC_KEY=devkey go run .
 package main
 
 import (
@@ -22,8 +22,8 @@ import (
 
 func main() {
 	alphaAddr := envOrDefault("TOKEN_ENGINE_ALPHA_ADDR", "localhost:9090")
-	betaAddr  := envOrDefault("TOKEN_ENGINE_BETA_ADDR", "localhost:9091")
-	key       := envOrDefault("TOKEN_ENGINE_STATIC_KEY", "devkey")
+	betaAddr := envOrDefault("TOKEN_ENGINE_BETA_ADDR", "localhost:9091")
+	key := envOrDefault("TOKEN_ENGINE_STATIC_KEY", "devkey")
 
 	// ===== Connect to both tenant servers =====
 	alphaClient, err := client.NewClient(alphaAddr,

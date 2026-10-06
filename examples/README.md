@@ -14,11 +14,11 @@ See [`docker-compose.yaml`](../docker-compose.yaml) for the default credentials
 
 | Example | Auth | Demonstrates |
 |---|---|---|
-| `grpc-client` | Static API key | Minimal gRPC client — `IssueToken` and token pair output |
-| `mtls-client` | mTLS certificate | Certificate-based auth with `WithMTLS` |
-| `custom-claims` | Static API key | Custom claims issuance and JWKS-based JWT validation |
-| `idempotency` | Static API key | Retry-safe requests via `x-idempotency-key`, content-mismatch rejection, and the deprecated request-field fallback |
-| `multi-tenant` | Static API key | Per-tenant isolation and cross-tenant token rejection |
+| [`grpc-client`](grpc-client/README.md) | Static API key | Minimal gRPC client — `IssueToken` and token pair output |
+| [`mtls-client`](mtls-client/README.md) | mTLS certificate | Certificate-based auth with `WithMTLS` |
+| [`custom-claims`](custom-claims/README.md) | Static API key | Custom claims issuance and JWKS-based JWT validation |
+| [`idempotency`](idempotency/README.md) | Static API key | Retry-safe requests via `x-idempotency-key`, content-mismatch rejection, and the deprecated request-field fallback |
+| [`multi-tenant`](multi-tenant/README.md) | Static API key | Per-tenant isolation and cross-tenant token rejection |
 
 ---
 

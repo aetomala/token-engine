@@ -216,9 +216,125 @@ var _ = Describe("ValidationInterceptor", func() {
 			})
 		})
 
-		Context("RPC method that is not IssueToken or RefreshToken", func() {
+		Context("request with an empty primary identifier (issue #158)", func() {
+			cases := []struct {
+				name   string
+				method string
+				field  string
+				req    interface{}
+			}{
+				{
+					name:   "RefreshTokenRequest — empty refresh_token",
+					method: tokenv1.TokenEngine_RefreshToken_FullMethodName,
+					field:  "refresh_token",
+					req:    &tokenv1.RefreshTokenRequest{TenantId: "t1"},
+				},
+				{
+					name:   "RevokeTokenRequest — empty refresh_token",
+					method: tokenv1.TokenEngine_RevokeToken_FullMethodName,
+					field:  "refresh_token",
+					req:    &tokenv1.RevokeTokenRequest{TenantId: "t1"},
+				},
+				{
+					name:   "RevokeUserRequest — empty user_id",
+					method: tokenv1.TokenEngine_RevokeAllUserTokens_FullMethodName,
+					field:  "user_id",
+					req:    &tokenv1.RevokeUserRequest{TenantId: "t1"},
+				},
+				{
+					name:   "RevokeAudienceRequest — empty audience",
+					method: tokenv1.TokenEngine_RevokeAllForAudience_FullMethodName,
+					field:  "audience",
+					req:    &tokenv1.RevokeAudienceRequest{TenantId: "t1"},
+				},
+				{
+					name:   "RevokeUserAndAudienceRequest — empty user_id",
+					method: tokenv1.TokenEngine_RevokeAllForUserAndAudience_FullMethodName,
+					field:  "user_id",
+					req:    &tokenv1.RevokeUserAndAudienceRequest{TenantId: "t1", Audience: "api"},
+				},
+				{
+					name:   "RevokeUserAndAudienceRequest — empty audience",
+					method: tokenv1.TokenEngine_RevokeAllForUserAndAudience_FullMethodName,
+					field:  "audience",
+					req:    &tokenv1.RevokeUserAndAudienceRequest{TenantId: "t1", UserId: "user1"},
+				},
+			}
+
+			for _, c := range cases {
+				c := c
+				It("returns codes.InvalidArgument naming the field without calling the handler — "+c.name, func() {
+					info := &grpc.UnaryServerInfo{FullMethod: c.method}
+					handlerCalled := false
+					handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+						handlerCalled = true
+						return nil, nil
+					}
+
+					_, err := sut(ctx, c.req, info, handler)
+
+					Expect(handlerCalled).To(BeFalse())
+					Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+					Expect(status.Convert(err).Message()).To(ContainSubstring(c.field))
+				})
+			}
+		})
+
+		Context("request with a non-empty primary identifier (issue #158)", func() {
+			cases := []struct {
+				name   string
+				method string
+				req    interface{}
+			}{
+				{
+					name:   "RefreshTokenRequest",
+					method: tokenv1.TokenEngine_RefreshToken_FullMethodName,
+					req:    &tokenv1.RefreshTokenRequest{TenantId: "t1", RefreshToken: "tok"},
+				},
+				{
+					name:   "RevokeTokenRequest",
+					method: tokenv1.TokenEngine_RevokeToken_FullMethodName,
+					req:    &tokenv1.RevokeTokenRequest{TenantId: "t1", RefreshToken: "tok"},
+				},
+				{
+					name:   "RevokeUserRequest",
+					method: tokenv1.TokenEngine_RevokeAllUserTokens_FullMethodName,
+					req:    &tokenv1.RevokeUserRequest{TenantId: "t1", UserId: "user1"},
+				},
+				{
+					name:   "RevokeAudienceRequest",
+					method: tokenv1.TokenEngine_RevokeAllForAudience_FullMethodName,
+					req:    &tokenv1.RevokeAudienceRequest{TenantId: "t1", Audience: "api"},
+				},
+				{
+					name:   "RevokeUserAndAudienceRequest",
+					method: tokenv1.TokenEngine_RevokeAllForUserAndAudience_FullMethodName,
+					req:    &tokenv1.RevokeUserAndAudienceRequest{TenantId: "t1", UserId: "user1", Audience: "api"},
+				},
+			}
+
+			for _, c := range cases {
+				c := c
+				It("calls the handler and returns its response unchanged — "+c.name, func() {
+					info := &grpc.UnaryServerInfo{FullMethod: c.method}
+					var received interface{}
+					handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+						received = req
+						return "ok", nil
+					}
+
+					resp, err := sut(ctx, c.req, info, handler)
+
+					Expect(err).To(BeNil())
+					Expect(resp).To(Equal("ok"))
+					Expect(received).To(BeIdenticalTo(c.req))
+				})
+			}
+		})
+
+		Context("request of a type the interceptor does not validate", func() {
 			It("calls the handler without inspecting the request", func() {
-				info := &grpc.UnaryServerInfo{FullMethod: "/token.v1.TokenEngine/RevokeToken"}
+				info := &grpc.UnaryServerInfo{FullMethod: "/grpc.health.v1.Health/Check"}
 				handlerCalled := false
 				handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 					handlerCalled = true

@@ -14,12 +14,12 @@ import (
 
 // fakeStub is a test double for tokenv1.TokenEngineClient. Unset function fields return (nil, nil).
 type fakeStub struct {
-	issueTokenFn              func(context.Context, *tokenv1.IssueTokenRequest, ...grpc.CallOption) (*tokenv1.TokenPair, error)
-	refreshTokenFn            func(context.Context, *tokenv1.RefreshTokenRequest, ...grpc.CallOption) (*tokenv1.TokenPair, error)
-	revokeTokenFn             func(context.Context, *tokenv1.RevokeTokenRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
-	revokeAllForAudienceFn    func(context.Context, *tokenv1.RevokeAudienceRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
-	revokeAllUserTokensFn     func(context.Context, *tokenv1.RevokeUserRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
-	revokeAllForUserAndAudFn  func(context.Context, *tokenv1.RevokeUserAndAudienceRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
+	issueTokenFn             func(context.Context, *tokenv1.IssueTokenRequest, ...grpc.CallOption) (*tokenv1.TokenPair, error)
+	refreshTokenFn           func(context.Context, *tokenv1.RefreshTokenRequest, ...grpc.CallOption) (*tokenv1.TokenPair, error)
+	revokeTokenFn            func(context.Context, *tokenv1.RevokeTokenRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
+	revokeAllForAudienceFn   func(context.Context, *tokenv1.RevokeAudienceRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
+	revokeAllUserTokensFn    func(context.Context, *tokenv1.RevokeUserRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
+	revokeAllForUserAndAudFn func(context.Context, *tokenv1.RevokeUserAndAudienceRequest, ...grpc.CallOption) (*tokenv1.RevokeTokenResponse, error)
 }
 
 func (f *fakeStub) IssueToken(ctx context.Context, in *tokenv1.IssueTokenRequest, opts ...grpc.CallOption) (*tokenv1.TokenPair, error) {

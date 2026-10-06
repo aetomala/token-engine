@@ -380,12 +380,90 @@ No config, environment variable, or gRPC API changes.
 3. **Treat logs written by earlier versions as credential-bearing.** Restrict access to, or
    purge, token-engine logs retained from before this upgrade.
 4. **Do not enable command-level Redis tracing or logging** — `MONITOR`, `SLOWLOG` exports, or
-   client command hooks. Redis keys contain raw refresh tokens, and completed idempotency records
-   contain full token pairs for `TOKEN_ENGINE_IDEMPOTENCY_TTL`. Treat Redis RDB/AOF files and
-   backups as credential stores.
+   client command hooks. Redis keys contain raw refresh tokens, completed idempotency records
+   contain full token pairs for `TOKEN_ENGINE_IDEMPOTENCY_TTL`, and the `ks:pem:*` values are the RSA
+   private keys that sign access tokens. Treat Redis RDB/AOF files and backups as credential stores — see
+   the [Redis key inventory](pre-upgrade-runbook.md#redis-key-inventory).
 
 ### Consequences if skipped
 
 - Audit consumers keyed on `token_id` silently stop matching `RevokeToken` records — the field
   is absent from new lines. Revocations still succeed and are still audited.
 - Queries on the redacted library keys return `[REDACTED]` instead of a value.
+
+---
+
+## v1.2.1 → v1.2.2
+
+### What changed
+
+Correctness and hardening patch. No config, environment variable, proto, or gRPC API changes — the RPCs
+and their request and response fields are unchanged. Several requests that returned `INTERNAL` or `ABORTED`
+now return a more accurate status code, and jwtauth log lines carry the request's correlation ID.
+
+- **Validation now runs before idempotency (#154, [ADR-016](adr/ADR-016-validation-before-idempotency.md)).**
+  The interceptor chain is otelgrpc → correlation → auth → caller authorization → validation →
+  idempotency. A request that carries an idempotency key and fails validation no longer leaves a
+  pending idempotency claim behind, so a corrected retry with the same key reaches the handler instead of
+  receiving `ABORTED` for up to `TOKEN_ENGINE_LOCK_TTL`. An empty `tenant_id` is rejected with
+  `INVALID_ARGUMENT` on every attempt. The `"default"` tenant fallback in idempotency keys is removed:
+  `idempotency:default:*` keys that earlier versions wrote for empty-`tenant_id` requests expire on their
+  own within `TOKEN_ENGINE_IDEMPOTENCY_TTL` and need no action.
+- **Empty identifiers are rejected with `INVALID_ARGUMENT` (#158).** The error message names the field.
+  Rejected revocation requests no longer reach the audit store.
+
+  | RPC | Empty field | Message | Before | After |
+  |---|---|---|---|---|
+  | `RefreshToken`, `RevokeToken` | `refresh_token` | `refresh_token must not be empty` | `INTERNAL` | `INVALID_ARGUMENT` |
+  | `RevokeAllUserTokens`, `RevokeAllForUserAndAudience` | `user_id` | `user_id must not be empty` | `INTERNAL` | `INVALID_ARGUMENT` |
+  | `RevokeAllForAudience`, `RevokeAllForUserAndAudience` | `audience` | `audience must not be empty` | `INTERNAL` | `INVALID_ARGUMENT` |
+
+- **More jwtauth errors map to accurate status codes (#159).**
+
+  | Condition | jwtauth error | Before | After |
+  |---|---|---|---|
+  | Empty user ID or audience | `tokens.ErrInvalidUserID`, `storage.ErrInvalidUserID`, `storage.ErrInvalidAudience` | `INTERNAL` | `INVALID_ARGUMENT` |
+  | Token manager or key manager not running | `tokens.ErrManagerNotRunning`, `keys.ErrManagerNotRunning` | `INTERNAL` | `UNAVAILABLE` |
+  | Expired refresh token reported by a custom store | `tokens.ErrRefreshTokenExpired` | `INTERNAL` | `UNAUTHENTICATED` |
+
+  Empty identifiers are normally rejected by validation first (above); these mappings are defense in
+  depth, and the not-running and expired-refresh cases are ones validation cannot catch.
+  **Unchanged:** an unknown, garbage, or expired refresh token on the built-in stores still returns
+  `INTERNAL` from `RefreshToken`. jwtauth folds not-found, expired, and backend failures such as a Redis
+  outage into the same `tokens.ErrInvalidRefreshToken`, so mapping it to `UNAUTHENTICATED` would tell clients
+  their credentials are bad during an outage. This is tracked in
+  [aetomala/jwtauth#286](https://github.com/aetomala/jwtauth/issues/286).
+- **jwtauth log lines carry the request's `correlation_id` (#160).** Library lines forwarded into
+  token-engine's log stream now include the `correlation_id` of the request that produced them, and no
+  longer include a `"!BADKEY"` field. Lines logged outside a request, such as at startup, keep an empty
+  `correlation_id`.
+- **OpenTelemetry modules bumped to v1.45.0 (#169),** fixing GO-2026-6505 — exporter configuration
+  logging could expose endpoint URLs in info logs. `otelgrpc` stays at v0.52.0.
+- **The pre-upgrade runbook's Redis backup step was corrected (#173, #176).** It now carries a verified
+  key inventory and states that a backup is a credential store; it no longer refers to the reconciliation
+  cursor keys that no supported version writes.
+
+### Required actions
+
+1. **Re-baseline error-rate alerts and dashboards** for `RefreshToken` and the revocation RPCs. Requests
+   with an empty `refresh_token`, `user_id`, or `audience` move from `INTERNAL` to `INVALID_ARGUMENT`, and a
+   token or key manager that is not running now reports `UNAVAILABLE`. These are client input and
+   availability conditions, so an `INTERNAL` alert will fall and `INVALID_ARGUMENT` panels will rise.
+2. **Review client retry logic.** A client that retried `INTERNAL` after an empty-field request now receives
+   `INVALID_ARGUMENT`, which can never succeed on retry. A client that handled `ABORTED` after sending an
+   invalid request with an idempotency key no longer receives it in that case — `ABORTED` now always means a
+   concurrent duplicate is still in flight.
+3. **Update library-log queries and parsers** that assumed jwtauth lines have an empty `correlation_id`, or
+   that worked around the `"!BADKEY"` field. Library lines can now be joined to the request's other log lines
+   on `correlation_id`.
+4. **Re-read the runbook's Redis backup step** before the next upgrade: a Redis backup holds raw refresh
+   tokens, the RSA signing keys, and idempotency records with full token pairs.
+5. **Deploy v1.2.2** to pick up the OpenTelemetry fix. No configuration change is needed.
+
+### Consequences if skipped
+
+- Alerts keyed on `INTERNAL` silently stop counting these client errors, and nothing alerts on the
+  `INVALID_ARGUMENT` increase. No requests fail that did not fail before.
+- Retry logic that retried `INTERNAL` on these requests now stops after the first attempt, which is correct
+  because the request cannot succeed.
+- Queries that matched an empty `correlation_id` on library lines stop matching them. No log data is lost.

@@ -35,6 +35,6 @@ Report security vulnerabilities via [GitHub Security Advisories](https://github.
 Key decisions relevant to security:
 
 - **ADR-003** — Static caller keys: API keys are validated in-memory on every request; there is no session state that can be hijacked.
-- **ADR-006** — Interceptor chain order: authentication runs before caller authorization, idempotency, and validation — unauthorized requests never reach business logic.
+- **ADR-006** — Interceptor chain order: authentication runs before caller authorization, validation, and idempotency — unauthorized requests never reach business logic. Amended by **ADR-016**: validation runs before the idempotency claim, so invalid requests never write idempotency state.
 
 Token security guarantees (signing, key rotation, replay prevention) are inherited from jwtauth — see the [jwtauth security policy](https://github.com/aetomala/jwtauth/blob/main/SECURITY.md).
