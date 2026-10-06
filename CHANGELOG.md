@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.2.2] — 2026-10-06
+
 ### Fixed
 
 - A request that carries an idempotency key and fails validation no longer leaves a pending idempotency
