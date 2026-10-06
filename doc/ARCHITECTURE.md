@@ -146,7 +146,7 @@ The `TokenHandler` depends on the `tokens.TokenManager` interface (introduced in
 
 token-engine does not implement any JWT signing, key management, or token storage logic. It provides the transport, multi-tenancy, and observability layers that jwtauth does not include by design.
 
-**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`. Package ownership of each sentinel is verified from jwtauth v1.1.0 source:
+**Error mapping:** jwtauth errors are converted to gRPC status codes in `observability.MapLibraryError`, matched with `errors.Is` so wrapped sentinels map the same as bare ones. Package ownership of each sentinel is verified from jwtauth v1.1.1 source. Any error not listed maps to `INTERNAL`.
 
 | Sentinel | Package | gRPC Code |
 |---|---|---|
@@ -156,6 +156,15 @@ token-engine does not implement any JWT signing, key management, or token storag
 | `ErrKeyStoreInvalidKeyID` | `pkg/keys` | `INTERNAL` |
 | `ErrTokenMissingKid` | `pkg/tokens` | `INTERNAL` |
 | `ErrTokenExpired` | `pkg/tokens` | `UNAUTHENTICATED` |
+| `ErrRefreshTokenExpired` | `pkg/tokens` | `UNAUTHENTICATED` |
+| `ErrInvalidUserID` | `pkg/tokens` | `INVALID_ARGUMENT` |
+| `ErrInvalidUserID` | `pkg/storage` | `INVALID_ARGUMENT` |
+| `ErrInvalidAudience` | `pkg/storage` | `INVALID_ARGUMENT` |
+| `ErrManagerNotRunning` | `pkg/tokens` | `UNAVAILABLE` |
+| `ErrManagerNotRunning` | `pkg/keys` | `UNAVAILABLE` |
+| `ErrInvalidRefreshToken` | `pkg/tokens` | `INTERNAL` |
+
+`tokens.ErrInvalidRefreshToken` is deliberately `INTERNAL`: on the refresh path jwtauth folds every storage error except "revoked" into it — not-found, expired, and backend failures such as a Redis outage alike — so mapping it to `UNAUTHENTICATED` would tell clients their credentials are bad during an outage. Revisit once [aetomala/jwtauth#286](https://github.com/aetomala/jwtauth/issues/286) distinguishes them. On every jwtauth upgrade, diff its exported sentinels against this table — see the [pre-upgrade runbook](pre-upgrade-runbook.md#3-error-sentinel-audit-procedure).
 
 ---
 

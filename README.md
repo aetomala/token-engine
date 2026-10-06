@@ -190,14 +190,14 @@ Revokes all refresh tokens for a user within a specific audience.
 
 | gRPC Code | Condition |
 |---|---|
-| `UNAUTHENTICATED` | Missing or invalid API key; expired access token |
+| `UNAUTHENTICATED` | Missing or invalid API key; expired access token; expired refresh token (custom stores only) |
 | `PERMISSION_DENIED` | Caller not authorized for this tenant; revoked token; invalid audience |
 | `NOT_FOUND` | Refresh token not found |
-| `UNAVAILABLE` | Audit store unreachable — revocation RPCs only; issuance is never gated |
-| `INTERNAL` | Invalid key ID; missing kid claim; audit record failure; unexpected library error |
+| `UNAVAILABLE` | Audit store unreachable — revocation RPCs only; issuance is never gated; token or key manager not running |
+| `INTERNAL` | Invalid key ID; missing kid claim; audit record failure; unknown, garbage, or expired refresh token on `RefreshToken` with the built-in stores (see [MIGRATION.md](doc/MIGRATION.md#v121--v122)); unexpected library error |
 | `ABORTED` | A concurrent request with the same idempotency key is already in flight; retry |
 | `FAILED_PRECONDITION` | An idempotency key was reused with different request content; use a new key |
-| `INVALID_ARGUMENT` | The `idempotency_key` field and the `x-idempotency-key` header were both set to different values on the same request; set only one |
+| `INVALID_ARGUMENT` | An empty `tenant_id`, `sub` (`IssueToken`), `refresh_token` (`RefreshToken`, `RevokeToken`), `user_id` (`RevokeAllUserTokens`, `RevokeAllForUserAndAudience`), or `audience` (`RevokeAllForAudience`, `RevokeAllForUserAndAudience`) — the message names the field; a reserved claim key; or the `idempotency_key` field and the `x-idempotency-key` header were both set to different values on the same request (set only one) |
 
 ---
 
@@ -345,6 +345,8 @@ See [doc/PERFORMANCE.md](doc/PERFORMANCE.md) for measured RPC latency baselines,
 | v1.0 | ✅ Complete | Production readiness — true refresh token rotation, populated `access_token_expires_in` / `refresh_token_expires_in`, `NewReconcilerChecker` for `/healthz/ready`, `PERFORMANCE.md` RPC latency baseline, pre-1.0 correctness audit |
 | v1.1 | ✅ Complete | jwtauth v1.1.0 upgrade (expiry-indexed `Cleanup`, `TOKEN_ENGINE_BACKFILL_EXPIRY_INDEX` one-time migration), `config.Load()` returns sentinel errors instead of exiting, tenant_id/audit-event/static-caller-key correctness fixes, reconciler simplified to one cleanup call per tenant per pass, `UPGRADING.md` consolidated into `doc/MIGRATION.md`, CI reliability fixes |
 | v1.2 | ✅ Complete | Idempotency hardening — concurrent same-key request serialization via an atomic claim (#127), request-content fingerprint binding (#128), documented `idempotency_key` field wiring (#129), field deprecated in favor of the header (#139), `examples/idempotency` |
+| v1.2.1 | ✅ Complete | Security release ([GHSA-3qw9-68m5-hgqc](https://github.com/aetomala/token-engine/security/advisories/GHSA-3qw9-68m5-hgqc)) — refresh tokens redacted from logs and audit records (`token_ref` digest), jwtauth v1.1.1, leak-regression test, only v1.2.x supported |
+| v1.2.2 | ✅ Complete | Correctness patch — validation runs before the idempotency claim ([ADR-016](doc/adr/ADR-016-validation-before-idempotency.md)), empty identifiers return `INVALID_ARGUMENT`, expanded jwtauth error mapping, library log lines carry `correlation_id`, OpenTelemetry v1.45.0 (GO-2026-6505), gofmt and example builds enforced in CI, ADR-011 and runbook corrections |
 
 ---
 

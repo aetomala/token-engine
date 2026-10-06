@@ -62,6 +62,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   key inventory (refresh-token hashes and indexes, expiry index, signing keys and metadata, idempotency records, rotation marker),
   stated the tenant-prefix format, and warned that a backup holds refresh tokens, RSA signing keys, and idempotency token pairs
   ([#176](https://github.com/aetomala/token-engine/issues/176))
+- Added the v1.2.1 → v1.2.2 section to `doc/MIGRATION.md` (interceptor order, empty-identifier validation, jwtauth error
+  mapping, library log correlation, OpenTelemetry fix), named the RSA signing keys in the v1.2.1 section's credential-store
+  warning, added v1.2.1 and v1.2.2 rows to the README roadmap, and brought the README Error Codes table and the
+  ARCHITECTURE.md error-mapping table (now 13 sentinels, verified against jwtauth v1.1.1) up to date
+  ([#179](https://github.com/aetomala/token-engine/issues/179))
 
 ## [v1.2.1] — 2026-09-25
 
