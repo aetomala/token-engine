@@ -58,6 +58,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Removed `reconciliation:cursor:*` from the pre-upgrade runbook's backup list and replaced the rollback step that told
   operators to verify cursor keys with a note that they are inert; no supported version writes them
   ([#173](https://github.com/aetomala/token-engine/issues/173))
+- Corrected the pre-upgrade runbook's Redis backup step: replaced the `token:*` pattern, which matches no key, with a verified
+  key inventory (refresh-token hashes and indexes, expiry index, signing keys and metadata, idempotency records, rotation marker),
+  stated the tenant-prefix format, and warned that a backup holds refresh tokens, RSA signing keys, and idempotency token pairs
+  ([#176](https://github.com/aetomala/token-engine/issues/176))
 
 ## [v1.2.1] — 2026-09-25
 
