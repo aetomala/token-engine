@@ -4,12 +4,30 @@
 
 Complete all items before applying a new Token Engine version to a production environment.
 
-- [ ] **Backup Redis namespace** — snapshot the Redis database or export all `token:*` and `key_rotation:*` keys. Verify the backup is restorable before proceeding.
+- [ ] **Backup Redis namespace** — snapshot the Redis database, and verify the backup is restorable before proceeding. If you export keys instead of snapshotting, export every family in the [Redis key inventory](#redis-key-inventory) below except the transient lock keys. **The backup is a credential store:** it contains raw refresh tokens, the RSA private keys that sign access tokens, and idempotency records holding complete token pairs. Restrict access to it, encrypt it at rest, and delete it once the upgrade is verified — see [MIGRATION.md](MIGRATION.md#v120--v121).
 - [ ] **Verify cert-manager health** — if mTLS is enabled, confirm that cert-manager is running and that the serving certificate is valid and not approaching expiry. A certificate renewal failure during a rolling update will cause gRPC connection failures.
 - [ ] **Confirm single-replica deployment if pre-v0.6** — before v0.6, Token Engine must run as a single replica. Verify `kubectl get deployment token-engine -o jsonpath='{.spec.replicas}'` returns `1`. Do not scale up until v0.6 distributed lock behaviour is validated (see operator guide §11).
 - [ ] **Confirm Redis connectivity** — run `redis-cli -h $REDIS_HOST ping` from within the cluster and verify `PONG` is returned.
 - [ ] **Check active reconciliation passes** — inspect logs for `reconciler:` prefix entries. If a reconciliation pass is in progress, wait for it to complete or for the lock TTL to expire before upgrading.
 - [ ] **Review changelog** — read the release notes for the target version, paying particular attention to breaking changes in the library API surface (see §2) and metric renames (see §4).
+
+### Redis key inventory
+
+`{tenant_id}` is the tenant's issuer ID. jwtauth keys put it **directly in front of** the family prefix with no separator — tenant `local-dev` writes `local-devtokens:...`. token-engine's own keys put a fixed prefix first and the tenant ID after it. Patterns below were verified by running `redis-cli --scan` against a live v1.2.x service.
+
+| Pattern | Type | Written by | Contents |
+|---|---|---|---|
+| `{tenant_id}tokens:{refresh_token}` | hash | jwtauth refresh store | One hash per refresh token. **The key name is the raw refresh token.** Fields: `expiresAt`, `createdAt`, `revoked`, `metadata`, `audience`, `userID`. |
+| `{tenant_id}user_tokens:{user_id}` | set | jwtauth | Per-user index. **Members are raw refresh tokens.** |
+| `{tenant_id}audience_tokens:{audience}` | set | jwtauth | Per-audience index. **Members are raw refresh tokens.** |
+| `{tenant_id}audience_user_tokens:{audience}:{user_id}` | set | jwtauth | Per-user, per-audience index. **Members are raw refresh tokens.** |
+| `{tenant_id}token_expiry_index` | sorted set | jwtauth (v1.1.0+) | Expiry index used by the reconciler's cleanup pass. **Members are raw refresh tokens.** No TTL. |
+| `{tenant_id}ks:pem:{key_id}` | string | jwtauth key store | **RSA private signing key (PEM).** |
+| `{tenant_id}ks:meta:{key_id}` | string | jwtauth key store | Signing-key metadata. |
+| `idempotency:{tenant_id}:{method}:{client_key}` | string | token-engine | Idempotency record in the versioned `IDR1` envelope. A completed record **holds the full token pair** for `TOKEN_ENGINE_IDEMPOTENCY_TTL` (default 24h); a pending claim lives for `TOKEN_ENGINE_LOCK_TTL`. |
+| `key_rotation:last_generated:{tenant_id}` | string | token-engine | RFC 3339 timestamp of the last key rotation, read by the rotation guard. No TTL. |
+
+Transient keys that are **not** part of a backup: `locks:reconciliation:{tenant_id}` and `locks:key_rotation:{tenant_id}`. They exist only while a reconciliation pass or key rotation holds the lock and expire after `TOKEN_ENGINE_LOCK_TTL` — see §5, step 4.
 
 ## 2. Library API Surface Audit Procedure
 
